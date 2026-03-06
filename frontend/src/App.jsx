@@ -1,10 +1,10 @@
 import { useUser } from "@clerk/clerk-react";
 import { Navigate, Route, Routes } from "react-router-dom";
-import HomePage from "./pages/HomePage";
+import HomePage from "./pages/HomePageTemp";
 
 import { Toaster } from "react-hot-toast";
-import DashboardPage from "./pages/DashboardPage";
-import ProblemPage from "./pages/ProblemPage";
+import DashboardPage from "./pages/DashboardPageTemp";
+import ProblemPage from "./pages/ProblemPageTemp";
 import ProblemsPage from "./pages/ProblemsPage";
 import SessionPage from "./pages/SessionPage";
 
