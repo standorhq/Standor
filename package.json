@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
-    "start":"npm run start --prefix backend"
+    "start": "npm run start --prefix backend"
   },
   "repository": {
     "type": "git",
@@ -16,12 +16,17 @@
   "license": "ISC",
   "homepage": "https://github.com/standorhq/Standor#readme",
   "dependencies": {
-    "concurrently": "^8.2.2"
+    "@clerk/react": "^6.0.1",
+    "canvas-confetti": "^1.9.4",
+    "concurrently": "^8.2.2",
+    "lucide-react": "^0.577.0",
+    "mongodb": "^7.1.0",
+    "react-resizable-panels": "^4.7.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
   },
-  "engines":{
-    "node":">20.0.0"
+  "engines": {
+    "node": ">20.0.0"
   }
 }
