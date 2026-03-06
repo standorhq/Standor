@@ -60,8 +60,7 @@ function SessionPage() {
     if (isHost || isParticipant) return;
 
     joinSessionMutation.mutate(id, { onSuccess: refetch });
-
-    // remove the joinSessionMutation, refetch from dependencies to avoid infinite loop
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, user, loadingSession, isHost, isParticipant, id]);
 
   // redirect the "participant" when session ends
@@ -184,13 +183,13 @@ function SessionPage() {
                               </div>
                               <div className="bg-base-200 rounded-lg p-4 font-mono text-sm space-y-1.5">
                                 <div className="flex gap-2">
-                                  <span className="text-primary font-bold min-w-[70px]">
+                                  <span className="text-primary font-bold min-w-17.5">
                                     Input:
                                   </span>
                                   <span>{example.input}</span>
                                 </div>
                                 <div className="flex gap-2">
-                                  <span className="text-secondary font-bold min-w-[70px]">
+                                  <span className="text-secondary font-bold min-w-17.5">
                                     Output:
                                   </span>
                                   <span>{example.output}</span>
