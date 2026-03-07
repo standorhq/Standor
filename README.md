@@ -1,41 +1,67 @@
-# Standor
+# Standor — Code Together
 
-Standor is a real-time collaborative coding interview platform with AI-powered evaluation and structured hiring analytics.
+**Standor** is a real-time collaborative coding interview platform with AI-powered evaluation and structured hiring analytics.
 
-## Vision
+## Features
 
-To become the standard infrastructure for technical interviews.
-
-## Core Features (Planned)
-
-- Real-time collaborative code editor (Monaco + WebSockets)
-- AI-based code analysis (complexity, bug detection, style scoring)
-- Interview room management
-- Code snapshots & persistence
-- Recruiter analytics dashboard
-- Scalable WebSocket architecture
+- **Real-time Collaboration** — Monaco Editor with live code syncing via Socket.IO
+- **Code Execution** — Run code in 20+ languages using Piston API
+- **AI Analysis** — DeepSeek Coder via OpenRouter for code evaluation
+- **Email Feedback** — Automated session reports via Nodemailer + Brevo
+- **Authentication** — JWT + Google OAuth
+- **Session Management** — Create, join, and manage interview sessions
+- **Code Snapshots** — Automatic code saving every 30 seconds
+- **Dashboard** — View active and completed sessions
 
 ## Tech Stack
 
-- Frontend: Next.js 15 + TypeScript
-- Backend: Node.js + Express + Socket.io
-- Database: MongoDB + Prisma
-- AI: OpenAI
-- Realtime Sync: Yjs (CRDT)
-- Deployment: Vercel + MongoDB Atlas
+### Frontend (`app/frontend`)
+- Next.js 14 + TypeScript + Tailwind CSS + shadcn/ui
+- Monaco Editor · Socket.IO Client
 
-## Architecture (Planned)
+### Backend (`app/backend`)
+- Node.js + Express + TypeScript
+- Prisma ORM (MongoDB) · Socket.IO · JWT Auth
 
-apps/
-  web/        -> Frontend application
-  server/     -> Backend API + WebSocket server
+## Project Structure
 
-packages/
-  ai-engine/  -> AI analysis layer
-  shared/     -> Shared utilities & types
+```
+Standor/
+├── app/
+│   ├── frontend/     # Next.js 14 app
+│   └── backend/      # Express + Prisma API
+└── README.md
+```
 
-docs/
-  Architecture & design documents
+## Getting Started
+
+### Backend
+
+```bash
+cd app/backend
+cp .env.example .env   # fill in DATABASE_URL and JWT_SECRET
+npm install
+npm run migrate        # prisma db push
+npm run dev            # http://localhost:4000
+```
+
+### Frontend
+
+```bash
+cd app/frontend
+cp .env.local.example .env.local
+npm install
+npm run dev            # http://localhost:3000
+```
+
+## API Endpoints
+
+- `POST /api/auth/register` — Register
+- `POST /api/auth/login` — Login
+- `POST /api/sessions` — Create session
+- `GET  /api/sessions/:id` — Get session
+- `POST /api/code/execute` — Run code
+- `GET  /api/health` — Health check
 
 ---
 
