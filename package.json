@@ -1,32 +1,28 @@
 {
   "name": "standor",
-  "version": "1.0.0",
-  "description": "prototype",
-  "main": "index.js",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
   "scripts": {
-    "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
-    "start": "npm run start --prefix backend"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/standorhq/Standor.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "homepage": "https://github.com/standorhq/Standor#readme",
-  "dependencies": {
-    "@clerk/react": "^6.0.1",
-    "canvas-confetti": "^1.9.4",
-    "concurrently": "^8.2.2",
-    "lucide-react": "^0.577.0",
-    "mongodb": "^7.1.0",
-    "react-resizable-panels": "^4.7.1"
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
-  },
-  "engines": {
-    "node": ">20.0.0"
+    "turbo": "^2.0.0",
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0",
+    "prettier": "^3.2.0",
+    "eslint": "^8.57.0"
   }
 }
