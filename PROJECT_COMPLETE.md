@@ -82,7 +82,7 @@ cd ../frontend && npm install
 ### 2. Configure Environment
 ```bash
 # backend/.env
-DB_URL=mongodb+srv://...
+DB_URL=<your-mongodb-atlas-connection-string>
 AUTH_SECRET=your-secret-32-chars
 JWT_SECRET=your-jwt-secret
 
