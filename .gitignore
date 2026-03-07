@@ -23,6 +23,5 @@ infra/
 package.json
 package-lock.json
 pnpm-workspace.yaml
-tsconfig.base.json
 turbo.json
 a

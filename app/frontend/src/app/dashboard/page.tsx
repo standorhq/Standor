@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { Plus, Copy, ExternalLink, Clock, CheckCircle2, Loader2, Zap } from 'lucide-react';
+import { Plus, Copy, ExternalLink, Clock, CheckCircle2, Loader2, Zap, ChevronDown } from 'lucide-react';
 import { Navbar } from '@/components/Navbar';
 import { api } from '@/lib/api';
 import toast from 'react-hot-toast';
 import type { Session } from '@/types';
+
+interface Problem { title: string; difficulty: string; tags: readonly string[] }
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'] as const;
 type Difficulty = (typeof DIFFICULTIES)[number];
@@ -23,6 +25,13 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<'all' | 'active' | 'completed'>('all');
   const [showModal, setShowModal] = useState(false);
   const [form, setForm] = useState({ problem: '', difficulty: 'medium' as Difficulty });
+  const [showProblems, setShowProblems] = useState(false);
+
+  const { data: problemList = [] } = useQuery<Problem[]>({
+    queryKey: ['problems'],
+    queryFn: () => api.get('/api/problems').then((r) => r.data),
+    enabled: showModal,
+  });
 
   const { data: sessions = [], isLoading } = useQuery<Session[]>({
     queryKey: ['sessions'],
@@ -187,13 +196,42 @@ export default function DashboardPage() {
                 <label className="mb-1.5 block text-sm font-medium text-slate-700">
                   Problem title
                 </label>
-                <input
-                  className="input"
-                  required
-                  value={form.problem}
-                  onChange={(e) => setForm((f) => ({ ...f, problem: e.target.value }))}
-                  placeholder="e.g. Two Sum, System Design: URL Shortener"
-                />
+                <div className="relative">
+                  <input
+                    className="input pr-10"
+                    required
+                    value={form.problem}
+                    onChange={(e) => setForm((f) => ({ ...f, problem: e.target.value }))}
+                    placeholder="e.g. Two Sum, System Design: URL Shortener"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowProblems((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    aria-label="Pick a demo problem"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                </div>
+                {showProblems && problemList.length > 0 && (
+                  <ul className="mt-1 max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-card-hover">
+                    {problemList.map((p) => (
+                      <li key={p.title}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm({ problem: p.title, difficulty: p.difficulty.toLowerCase() as Difficulty });
+                            setShowProblems(false);
+                          }}
+                          className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                        >
+                          <span className="font-medium text-slate-800">{p.title}</span>
+                          <span className="ml-2 text-xs text-slate-400">{p.difficulty.toLowerCase()}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div>
