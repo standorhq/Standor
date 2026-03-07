@@ -1,30 +1,31 @@
 {
-  "name": "backend",
+  "name": "standor-backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "src/server.js",
   "type": "module",
+  "description": "Standor backend - Real-time coding interview platform",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
+    "dev": "node --watch src/server.js",
     "start": "node src/server.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.78.0",
-    "@stream-io/node-sdk": "^0.7.8",
+    "axios": "^1.7.2",
+    "bcryptjs": "^2.4.3",
+    "better-auth": "^1.0.0",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
-    "express": "^5.2.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "google-auth-library": "^10.6.1",
-    "inngest": "^3.28.3",
-    "jsonwebtoken": "^9.0.3",
-    "mongoose": "^8.19.1",
-    "resend": "^6.9.3",
-    "stream-chat": "^8.50.0"
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.0",
+    "morgan": "^1.10.0",
+    "nanoid": "^5.0.7",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.13",
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "nodemon": "^3.1.0"
   }
 }
