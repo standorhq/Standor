@@ -13,6 +13,8 @@ import { initSocket } from './socket/handlers.js';
 import { authRouter } from './routes/auth.js';
 import { sessionRouter } from './routes/sessions.js';
 import { codeRouter } from './routes/code.js';
+import { problemsRouter } from './routes/problems.js';
+import { cleanupStaleSessions } from './jobs/cleanup.js';
 import { prisma } from './lib/prisma.js';
 import { env } from './lib/env.js';
 
@@ -33,22 +35,14 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOS
 app.use('/api/auth', authRouter);
 app.use('/api/sessions', sessionRouter);
 app.use('/api/code', codeRouter);
+app.use('/api/problems', problemsRouter);
 
 // ── Socket.IO ─────────────────────────────────────────────────────────────────
 initSocket(httpServer);
 
-// ── Cron: snapshot active sessions every 30s ──────────────────────────────────
-cron.schedule('*/30 * * * * *', async () => {
-  // Snapshot is handled client-side; cron here cleans up stale active sessions
-  try {
-    const cutoff = new Date(Date.now() - 4 * 60 * 60 * 1000); // 4h
-    await prisma.session.updateMany({
-      where: { status: 'ACTIVE', startedAt: { lt: cutoff } },
-      data: { status: 'COMPLETED', endedAt: new Date() },
-    });
-  } catch (e) {
-    console.error('[cron] snapshot cleanup error:', e);
-  }
+// ── Cron: clean up stale sessions every 5 minutes ─────────────────────────────
+cron.schedule('*/5 * * * *', () => {
+  void cleanupStaleSessions().catch((e) => console.error('[cron] cleanup error:', e));
 });
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
