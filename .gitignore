@@ -16,7 +16,8 @@ Untitled-1.md
 docs/
 memory/
 infra/
-.github/
+.github/ISSUE_TEMPLATE/
+.github/pull_request_template.md
 .env.example
 .prettierrc
 package.json

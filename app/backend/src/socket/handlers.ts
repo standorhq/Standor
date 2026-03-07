@@ -2,8 +2,9 @@
 
 import type { Server as HttpServer } from 'node:http';
 import { Server, Socket } from 'socket.io';
+import { WebSocketServer } from 'ws';
+import { setupWSConnection } from 'y-websocket/bin/utils';
 import jwt from 'jsonwebtoken';
-import { rateLimit } from 'express-rate-limit';
 import { env } from '../lib/env.js';
 
 interface TokenPayload {
@@ -94,10 +95,18 @@ export function initSocket(httpServer: HttpServer): Server {
     });
   });
 
-  // Yjs WebSocket handler path
-  io.of('/yjs').on('connection', (socket) => {
-    // y-websocket handles its own protocol; just log
-    console.log(`[yjs] connection: ${socket.id}`);
+  // ── Yjs WebSocket server (native ws — y-websocket protocol) ─────────────
+  const wss = new WebSocketServer({ noServer: true });
+  wss.on('connection', (ws, req) => {
+    setupWSConnection(ws, req);
+  });
+
+  httpServer.on('upgrade', (req, socket, head) => {
+    if (req.url?.startsWith('/yjs')) {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+    }
   });
 
   return io;
