@@ -1,46 +1,92 @@
-import express from "express";
-import path from "path";
-import cors from "cors";
-import { serve } from "inngest/express";
+import express from 'express';
+import { createServer } from 'http';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import mongoose from 'mongoose';
+import dotenv from 'dotenv';
+import cron from 'node-cron';
 
-import { ENV } from "./lib/env.js";
-import { connectDB } from "./lib/db.js";
-import { inngest, functions } from "./lib/inngest.js";
+import { initializeSocket } from './lib/socket.js';
+import { verifyEmailConfig } from './lib/email.js';
 
-import authRoutes from "./routes/authRoutes.js";
-import chatRoutes from "./routes/chatRoutes.js";
-import sessionRoutes from "./routes/SessionRoute.js";
+import authRoutes from './routes/authRoutes.js';
+import sessionRoutes from './routes/sessionRoutes.js';
+import codeRoutes from './routes/codeRoutes.js';
+
+import Session from './models/Session.js';
+
+dotenv.config();
 
 const app = express();
+const server = createServer(app);
+const PORT = process.env.PORT || 5001;
 
-const __dirname = path.resolve();
-
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  credentials: true
+}));
+app.use(morgan('dev'));
 app.use(express.json());
-app.use(cors({ origin: ENV.CLIENT_URL, credentials: true }));
+app.use(express.urlencoded({ extended: true }));
 
-app.use("/api/inngest", serve({ client: inngest, functions }));
-app.use("/api/auth", authRoutes);
-app.use("/api/chat", chatRoutes);
-app.use("/api/sessions", sessionRoutes);
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/sessions', sessionRoutes);
+app.use('/api/code', codeRoutes);
 
-app.get("/health", (req, res) => {
-  res.status(200).json({ msg: "api is up and running" });
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Standor API is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
-if (ENV.NODE_ENV === "production") {
-  app.use(express.static(path.join(__dirname, "../frontend/dist")));
-  app.get("/{*any}", (req, res) => {
-    res.sendFile(path.join(__dirname, "../frontend", "dist", "index.html"));
-  });
-}
+// Initialize Socket.IO
+const io = initializeSocket(server);
 
-const startServer = async () => {
+// Snapshot cron job (every 30 seconds for active sessions)
+cron.schedule('*/30 * * * * *', async () => {
   try {
-    await connectDB();
-    app.listen(ENV.PORT, () => console.log("Server is running on port:", ENV.PORT));
+    const activeSessions = await Session.find({ status: 'active' });
+    console.log(`Cron: Checking ${activeSessions.length} active sessions`);
   } catch (error) {
-    console.error("💥 Error starting the server", error);
+    console.error('Cron error:', error);
   }
-};
+});
 
-startServer();
+// MongoDB connection
+mongoose.connect(process.env.DB_URL)
+  .then(async () => {
+    console.log('✅ MongoDB connected');
+    
+    // Verify email configuration
+    await verifyEmailConfig();
+    
+    // Start server
+    server.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
+      console.log(`✅ Socket.IO initialized`);
+      console.log(`✅ Environment: ${process.env.NODE_ENV}`);
+    });
+  })
+  .catch((error) => {
+    console.error('❌ MongoDB connection error:', error);
+    process.exit(1);
+  });
+
+// Error handling
+process.on('unhandledRejection', (error) => {
+  console.error('Unhandled Rejection:', error);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+export { io };

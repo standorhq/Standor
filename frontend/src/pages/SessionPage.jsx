@@ -1,337 +1,632 @@
-import { useAuth } from "../context/AuthContext";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import { useEndSession, useJoinSession, useSessionById } from "../hooks/useSession";
-import { PROBLEMS } from "../data/problems";
-import { executeCode } from "../lib/piston";
-import Navbar from "../components/Navbar";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { getDifficultyBadgeClass } from "../lib/utils";
-import { Loader2Icon, LogOutIcon, PhoneOffIcon } from "lucide-react";
-import CodeEditorPanel from "../components/CodeEditorPanel";
-import OutputPanel from "../components/OutputPanel";
-import AIAnalysisPanel from "../components/AIAnalysisPanel";
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import Editor from '@monaco-editor/react';
+import {
+  Video, VideoOff, Mic, MicOff, Play, Sparkles, MessageSquare,
+  ChevronRight, Copy, LogOut, Loader2, X, Send, AlertCircle,
+  Clock, Users, Code2
+} from 'lucide-react';
+import { useSocket } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
+import api from '../lib/api';
+import toast from 'react-hot-toast';
 
-import useStreamClient from "../hooks/useStreamClient";
-import { StreamCall, StreamVideo } from "@stream-io/video-react-sdk";
-import VideoCallUI from "../components/VideoCallUI";
-import { useSaveSnapshot } from "../hooks/useAiAnalysis";
+const LANGUAGES = [
+  { id: 'javascript', label: 'JavaScript' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+  { id: 'cpp', label: 'C++' },
+  { id: 'go', label: 'Go' },
+  { id: 'rust', label: 'Rust' },
+  { id: 'typescript', label: 'TypeScript' }
+];
 
-const SNAPSHOT_INTERVAL_MS = 30_000;
+function useTimer() {
+  const [seconds, setSeconds] = useState(0);
+  const [running, setRunning] = useState(false);
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [running]);
+  const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+  return { time: fmt(seconds), start: () => setRunning(true), stop: () => setRunning(false) };
+}
 
-function SessionPage() {
+export default function SessionPage() {
+  const { roomId } = useParams();
   const navigate = useNavigate();
-  const { id } = useParams();
   const { user } = useAuth();
-  const [output, setOutput] = useState(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const socket = useSocket();
+  const timer = useTimer();
 
-  const { data: sessionData, isLoading: loadingSession, refetch } = useSessionById(id);
+  // Editor state
+  const [code, setCode] = useState('// Start coding...\n');
+  const [language, setLanguage] = useState('javascript');
+  const [output, setOutput] = useState('');
+  const [running, setRunning] = useState(false);
 
-  const joinSessionMutation = useJoinSession();
-  const endSessionMutation = useEndSession();
-  const saveSnapshotMutation = useSaveSnapshot(id);
+  // AI Analysis state
+  const [analysis, setAnalysis] = useState(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
 
-  const session = sessionData?.session;
-  const isHost = session?.host?._id === user?._id;
-  const isParticipant = session?.participant?._id === user?._id;
+  // Chat state
+  const [messages, setMessages] = useState([]);
+  const [message, setMessage] = useState('');
+  const [activeTab, setActiveTab] = useState('chat');
+  const messagesEndRef = useRef(null);
 
-  const { call, channel, chatClient, isInitializingCall, streamClient } = useStreamClient(
-    session,
-    loadingSession,
-    isHost,
-    isParticipant
-  );
+  // Video state
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [remoteConnected, setRemoteConnected] = useState(false);
 
-  // find the problem data based on session problem title
-  const problemData = session?.problem
-    ? Object.values(PROBLEMS).find((p) => p.title === session.problem)
-    : null;
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
+  const peerRef = useRef(null);
+  const streamRef = useRef(null);
+  const snapshotTimerRef = useRef(null);
+  const isRemoteUpdate = useRef(false);
 
-  const [selectedLanguage, setSelectedLanguage] = useState("javascript");
-  const starterCode = problemData?.starterCode?.[selectedLanguage] || "";
-  const [code, setCode] = useState(starterCode);
-  const [prevStarterCode, setPrevStarterCode] = useState(starterCode);
+  const { data: session, isLoading } = useQuery({
+    queryKey: ['session', roomId],
+    queryFn: async () => {
+      const { data } = await api.get(`/sessions/${roomId}`);
+      return data.session;
+    }
+  });
 
-  // refs for snapshot interval (always latest values)
-  const codeRef = useRef(code);
-  const languageRef = useRef(selectedLanguage);
-  useEffect(() => { codeRef.current = code; }, [code]);
-  useEffect(() => { languageRef.current = selectedLanguage; }, [selectedLanguage]);
-
-  // update code when problem or language changes
-  if (starterCode !== prevStarterCode) {
-    setCode(starterCode);
-    setPrevStarterCode(starterCode);
-  }
-
-  // auto-join session if user is not already a participant and not the host
+  // Join room via socket
   useEffect(() => {
-    if (!session || !user || loadingSession) return;
-    if (isHost || isParticipant) return;
+    if (!socket || !user || !session) return;
 
-    joinSessionMutation.mutate(id, { onSuccess: refetch });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session, user, loadingSession, isHost, isParticipant, id]);
+    socket.emit('join-room', {
+      roomId,
+      userId: user.id,
+      userName: user.name,
+      role: session?.host?._id === user.id ? 'host' : 'participant'
+    });
 
-  // redirect the "participant" when session ends
+    timer.start();
+
+    return () => {
+      socket.emit('leave-room', { roomId });
+      timer.stop();
+    };
+  }, [socket, user, session, roomId]);
+
+  // Socket event listeners
   useEffect(() => {
-    if (!session || loadingSession) return;
-    if (session.status === "completed") navigate("/dashboard");
-  }, [session, loadingSession, navigate]);
+    if (!socket) return;
 
-  // periodic code snapshot every 30 seconds
+    const onCodeUpdate = ({ code: newCode, language: newLang }) => {
+      isRemoteUpdate.current = true;
+      setCode(newCode);
+      if (newLang) setLanguage(newLang);
+    };
+
+    const onChatMessage = (msg) => {
+      setMessages((prev) => [...prev, msg]);
+    };
+
+    const onUserJoined = ({ userName }) => {
+      toast.success(`${userName} joined the session`);
+      setRemoteConnected(true);
+    };
+
+    const onUserLeft = ({ userName }) => {
+      toast(`${userName} left the session`, { icon: '' });
+      setRemoteConnected(false);
+    };
+
+    socket.on('code-update', onCodeUpdate);
+    socket.on('chat-message', onChatMessage);
+    socket.on('user-joined', onUserJoined);
+    socket.on('user-left', onUserLeft);
+
+    return () => {
+      socket.off('code-update', onCodeUpdate);
+      socket.off('chat-message', onChatMessage);
+      socket.off('user-joined', onUserJoined);
+      socket.off('user-left', onUserLeft);
+    };
+  }, [socket]);
+
+  // Auto-scroll chat
   useEffect(() => {
-    if (!session || session.status !== "active") return;
-    const timer = setInterval(() => {
-      const currentCode = codeRef.current?.trim();
-      if (!currentCode) return;
-      saveSnapshotMutation.mutate({ content: currentCode, language: languageRef.current });
-    }, SNAPSHOT_INTERVAL_MS);
-    return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, session?.status]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  const handleLanguageChange = (e) => {
-    const newLang = e.target.value;
-    setSelectedLanguage(newLang);
-    // use problem-specific starter code
-    const starterCode = problemData?.starterCode?.[newLang] || "";
-    setCode(starterCode);
-    setOutput(null);
-  };
+  // Snapshot every 30s
+  useEffect(() => {
+    snapshotTimerRef.current = setInterval(async () => {
+      if (code && code.trim() !== '// Start coding...\n') {
+        try {
+          await api.post(`/sessions/${roomId}/snapshot`, { content: code, language });
+        } catch {
+          // Silent fail for snapshots
+        }
+      }
+    }, 30000);
+    return () => clearInterval(snapshotTimerRef.current);
+  }, [code, language, roomId]);
 
-  const handleRunCode = async () => {
-    setIsRunning(true);
-    setOutput(null);
+  // PeerJS setup
+  useEffect(() => {
+    let peer;
+    const setupPeer = async () => {
+      try {
+        const { default: Peer } = await import('peerjs');
+        peer = new Peer();
+        peerRef.current = peer;
 
-    const result = await executeCode(selectedLanguage, code);
-    setOutput(result);
-    setIsRunning(false);
-  };
+        peer.on('open', (id) => {
+          if (socket) {
+            socket.emit('peer-ready', { roomId, peerId: id });
+          }
+        });
 
-  const handleEndSession = () => {
-    if (confirm("Are you sure you want to end this session? All participants will be notified.")) {
-      // this will navigate the HOST to dashboard
-      endSessionMutation.mutate(id, { onSuccess: () => navigate("/dashboard") });
+        peer.on('call', (call) => {
+          if (streamRef.current) {
+            call.answer(streamRef.current);
+            call.on('stream', (remoteStream) => {
+              if (remoteVideoRef.current) {
+                remoteVideoRef.current.srcObject = remoteStream;
+                setRemoteConnected(true);
+              }
+            });
+          }
+        });
+      } catch {
+        // PeerJS not critical
+      }
+    };
+
+    setupPeer();
+    return () => { peer?.destroy(); };
+  }, [socket, roomId]);
+
+  const handleCodeChange = useCallback((value) => {
+    if (isRemoteUpdate.current) {
+      isRemoteUpdate.current = false;
+      return;
+    }
+    setCode(value || '');
+    if (socket) {
+      socket.emit('code-change', { roomId, code: value, language });
+    }
+  }, [socket, roomId, language]);
+
+  const toggleVideo = async () => {
+    try {
+      if (!videoEnabled) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: audioEnabled });
+        streamRef.current = stream;
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        setVideoEnabled(true);
+      } else {
+        streamRef.current?.getVideoTracks().forEach((t) => t.stop());
+        if (localVideoRef.current) localVideoRef.current.srcObject = null;
+        setVideoEnabled(false);
+      }
+    } catch {
+      toast.error('Camera access denied');
     }
   };
 
+  const toggleAudio = async () => {
+    try {
+      if (!audioEnabled) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: videoEnabled });
+        streamRef.current = stream;
+        setAudioEnabled(true);
+      } else {
+        streamRef.current?.getAudioTracks().forEach((t) => t.stop());
+        setAudioEnabled(false);
+      }
+    } catch {
+      toast.error('Microphone access denied');
+    }
+  };
+
+  const runCode = async () => {
+    setRunning(true);
+    setOutput('');
+    try {
+      const { data } = await api.post('/code/execute', { code, language });
+      setOutput(data.output || data.error || 'No output');
+    } catch {
+      setOutput('Execution failed. Please try again.');
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  const analyzeCode = async () => {
+    setAnalyzing(true);
+    setShowAnalysis(true);
+    setActiveTab('analysis');
+    try {
+      const { data } = await api.post(`/sessions/${roomId}/analyze`, { code, language });
+      setAnalysis(data.analysis);
+      toast.success('Analysis complete!');
+    } catch {
+      toast.error('Analysis failed');
+      setShowAnalysis(false);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const sendMessage = (e) => {
+    e.preventDefault();
+    if (!message.trim() || !socket) return;
+    socket.emit('chat-message', { roomId, message: message.trim(), userName: user.name });
+    setMessage('');
+  };
+
+  const endSession = async () => {
+    if (!confirm('End this session? Both participants will receive an email report.')) return;
+    try {
+      await api.post(`/sessions/${roomId}/end`);
+      toast.success('Session ended. Check your email for the report!');
+      navigate('/dashboard');
+    } catch {
+      toast.error('Failed to end session');
+    }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    toast.success('Session link copied!');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-base-100">
+        <div className="text-center">
+          <Loader2 className="size-10 animate-spin text-primary mx-auto mb-3" />
+          <p className="text-base-content/60">Loading session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-base-100">
+        <div className="text-center">
+          <AlertCircle className="size-10 text-error mx-auto mb-3" />
+          <p className="font-bold mb-2">Session not found</p>
+          <button onClick={() => navigate('/dashboard')} className="btn btn-primary btn-sm rounded-xl">
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isHost = session?.host?._id === user?.id;
+
   return (
-    <div className="h-screen bg-base-100 flex flex-col">
-      <Navbar />
+    <div className="h-screen flex flex-col bg-base-100 overflow-hidden">
+      {/* TOP BAR */}
+      <div className="flex items-center justify-between px-4 py-2 bg-base-200 border-b border-base-300 flex-shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="size-7 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center flex-shrink-0">
+            <Code2 className="size-3.5 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="font-bold text-sm truncate">{session.problem}</h1>
+            <div className="flex items-center gap-2">
+              <span className={`badge badge-xs capitalize ${session.difficulty === 'easy' ? 'badge-success' : session.difficulty === 'medium' ? 'badge-warning' : 'badge-error'}`}>
+                {session.difficulty}
+              </span>
+              <span className="text-xs text-base-content/40 font-mono">#{session.roomId}</span>
+            </div>
+          </div>
+        </div>
 
-      <div className="flex-1">
-        <PanelGroup direction="horizontal">
-          {/* LEFT PANEL - CODE EDITOR & PROBLEM DETAILS */}
-          <Panel defaultSize={50} minSize={30}>
-            <PanelGroup direction="vertical">
-              {/* PROBLEM DSC PANEL */}
-              <Panel defaultSize={50} minSize={20}>
-                <div className="h-full overflow-y-auto bg-base-200">
-                  {/* HEADER SECTION */}
-                  <div className="p-6 bg-base-100 border-b border-base-300">
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h1 className="text-3xl font-bold text-base-content">
-                          {session?.problem || "Loading..."}
-                        </h1>
-                        {problemData?.category && (
-                          <p className="text-base-content/60 mt-1">{problemData.category}</p>
-                        )}
-                        <p className="text-base-content/60 mt-2">
-                          Host: {session?.host?.name || "Loading..."} •{" "}
-                          {session?.participant ? 2 : 1}/2 participants
-                        </p>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Timer */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-base-300 rounded-lg px-3 py-1.5 text-xs font-mono">
+            <Clock className="size-3 text-primary" />
+            {timer.time}
+          </div>
+
+          {/* Participants */}
+          <div className="hidden sm:flex items-center gap-1.5 bg-base-300 rounded-lg px-3 py-1.5 text-xs">
+            <Users className="size-3 text-success" />
+            <span className={remoteConnected ? 'text-success' : 'text-base-content/40'}>
+              {remoteConnected ? '2/2' : '1/2'}
+            </span>
+          </div>
+
+          {/* Language selector */}
+          <select
+            value={language}
+            onChange={(e) => {
+              setLanguage(e.target.value);
+              if (socket) socket.emit('code-change', { roomId, code, language: e.target.value });
+            }}
+            className="select select-xs select-bordered rounded-lg"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.id} value={l.id}>{l.label}</option>
+            ))}
+          </select>
+
+          <button onClick={copyLink} className="btn btn-ghost btn-xs gap-1 rounded-lg">
+            <Copy className="size-3" />
+          </button>
+
+          <button
+            onClick={runCode}
+            disabled={running}
+            className="btn btn-success btn-xs gap-1 rounded-lg"
+          >
+            {running ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+            Run
+          </button>
+
+          <button onClick={analyzeCode} className="btn btn-secondary btn-xs gap-1 rounded-lg" disabled={analyzing}>
+            <Sparkles className="size-3" />
+            AI
+          </button>
+
+          {isHost && (
+            <button onClick={endSession} className="btn btn-error btn-xs gap-1 rounded-lg">
+              <LogOut className="size-3" />
+              End
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* MAIN LAYOUT */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* CODE EDITOR */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            <Editor
+              height="100%"
+              language={language === 'cpp' ? 'cpp' : language}
+              value={code}
+              onChange={handleCodeChange}
+              theme="vs-dark"
+              options={{
+                minimap: { enabled: false },
+                fontSize: 14,
+                lineNumbers: 'on',
+                scrollBeyondLastLine: false,
+                tabSize: 2,
+                wordWrap: 'on',
+                fontFamily: 'JetBrains Mono, Fira Code, Consolas, monospace',
+                cursorBlinking: 'smooth',
+                smoothScrolling: true,
+                formatOnPaste: true
+              }}
+            />
+          </div>
+
+          {/* OUTPUT PANEL */}
+          <div className="border-t border-base-300 bg-base-300 flex flex-col" style={{ height: output ? '160px' : '36px', transition: 'height 0.2s' }}>
+            <div className="flex items-center justify-between px-3 py-1.5 border-b border-base-300/50">
+              <span className="text-xs font-semibold text-base-content/60 uppercase tracking-wider">Output</span>
+              {output && (
+                <button onClick={() => setOutput('')} className="text-base-content/40 hover:text-base-content">
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+            {output && (
+              <div className="flex-1 overflow-auto p-3">
+                <pre className="text-xs font-mono text-base-content/80 whitespace-pre-wrap">{output}</pre>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT PANEL */}
+        <div className="w-72 xl:w-80 flex flex-col bg-base-200 border-l border-base-300 flex-shrink-0">
+          {/* VIDEO SECTION */}
+          <div className="p-3 border-b border-base-300">
+            <div className="space-y-2">
+              {/* Remote video */}
+              <div className="relative aspect-video bg-base-300 rounded-xl overflow-hidden">
+                <video ref={remoteVideoRef} autoPlay className="w-full h-full object-cover" />
+                {!remoteConnected && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <Users className="size-6 text-base-content/20 mb-1" />
+                    <p className="text-xs text-base-content/30">Waiting for participant...</p>
+                  </div>
+                )}
+                <div className="absolute bottom-1 left-2 text-xs text-white/60 bg-black/40 rounded px-1">
+                  {session.participant?.name || 'Participant'}
+                </div>
+              </div>
+
+              {/* Local video */}
+              <div className="relative aspect-video bg-base-300 rounded-xl overflow-hidden">
+                <video ref={localVideoRef} autoPlay muted className="w-full h-full object-cover" />
+                {!videoEnabled && (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <VideoOff className="size-6 text-base-content/20" />
+                  </div>
+                )}
+                <div className="absolute bottom-1 left-2 text-xs text-white/60 bg-black/40 rounded px-1">
+                  You
+                </div>
+              </div>
+            </div>
+
+            {/* Video controls */}
+            <div className="flex justify-center gap-2 mt-2">
+              <button
+                onClick={toggleVideo}
+                className={`btn btn-sm btn-circle ${videoEnabled ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                title={videoEnabled ? 'Turn off camera' : 'Turn on camera'}
+              >
+                {videoEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+              </button>
+              <button
+                onClick={toggleAudio}
+                className={`btn btn-sm btn-circle ${audioEnabled ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+                title={audioEnabled ? 'Mute' : 'Unmute'}
+              >
+                {audioEnabled ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* TABS */}
+          <div className="flex border-b border-base-300">
+            {[
+              { id: 'chat', icon: MessageSquare, label: 'Chat' },
+              { id: 'analysis', icon: Sparkles, label: 'AI' }
+            ].map(({ id, icon: Icon, label }) => (
+              <button
+                key={id}
+                onClick={() => setActiveTab(id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors ${activeTab === id ? 'text-primary border-b-2 border-primary bg-base-100/50' : 'text-base-content/50 hover:text-base-content'}`}
+              >
+                <Icon className="size-3.5" />
+                {label}
+                {id === 'chat' && messages.length > 0 && (
+                  <span className="badge badge-primary badge-xs ml-0.5">{messages.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          {/* TAB CONTENT */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {activeTab === 'chat' ? (
+              <>
+                <div className="flex-1 overflow-auto p-3 space-y-2">
+                  {messages.length === 0 ? (
+                    <div className="text-center py-8">
+                      <MessageSquare className="size-6 text-base-content/20 mx-auto mb-2" />
+                      <p className="text-xs text-base-content/40">No messages yet</p>
+                    </div>
+                  ) : (
+                    messages.map((msg, i) => (
+                      <div key={i} className={`flex flex-col ${msg.userName === user.name ? 'items-end' : 'items-start'}`}>
+                        <span className="text-xs text-base-content/40 mb-0.5 px-1">{msg.userName}</span>
+                        <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.userName === user.name ? 'bg-primary text-primary-content rounded-tr-sm' : 'bg-base-300 rounded-tl-sm'}`}>
+                          {msg.message}
+                        </div>
                       </div>
-
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`badge badge-lg ${getDifficultyBadgeClass(
-                            session?.difficulty
-                          )}`}
-                        >
-                          {session?.difficulty.slice(0, 1).toUpperCase() +
-                            session?.difficulty.slice(1) || "Easy"}
+                    ))
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+                <form onSubmit={sendMessage} className="p-3 border-t border-base-300 flex gap-2">
+                  <input
+                    type="text"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="input input-sm input-bordered flex-1 rounded-xl"
+                    placeholder="Type a message..."
+                  />
+                  <button type="submit" className="btn btn-primary btn-sm btn-square rounded-xl">
+                    <Send className="size-3.5" />
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div className="flex-1 overflow-auto p-3">
+                {analyzing ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="size-8 animate-spin text-primary mx-auto mb-3" />
+                    <p className="text-sm text-base-content/60">Analyzing your code...</p>
+                    <p className="text-xs text-base-content/40 mt-1">This may take a few seconds</p>
+                  </div>
+                ) : analysis ? (
+                  <div className="space-y-3">
+                    {/* Score */}
+                    <div className="text-center py-3 bg-base-300 rounded-xl">
+                      <p className="text-3xl font-black mb-1">
+                        <span className={analysis.overallScore >= 70 ? 'text-success' : analysis.overallScore >= 50 ? 'text-warning' : 'text-error'}>
+                          {analysis.overallScore}
                         </span>
-                        {isHost && session?.status === "active" && (
-                          <button
-                            onClick={handleEndSession}
-                            disabled={endSessionMutation.isPending}
-                            className="btn btn-error btn-sm gap-2"
-                          >
-                            {endSessionMutation.isPending ? (
-                              <Loader2Icon className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <LogOutIcon className="w-4 h-4" />
-                            )}
-                            End Session
-                          </button>
-                        )}
-                        {session?.status === "completed" && (
-                          <span className="badge badge-ghost badge-lg">Completed</span>
-                        )}
+                        <span className="text-base-content/30 text-lg">/100</span>
+                      </p>
+                      <p className="text-xs text-base-content/50">Overall Score</p>
+                    </div>
+
+                    {/* Complexity */}
+                    <div className="bg-base-300 rounded-xl p-3 space-y-1.5">
+                      <p className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mb-2">Complexity</p>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-base-content/50">Time</span>
+                        <span className="font-mono font-bold text-primary">{analysis.timeComplexity}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-base-content/50">Space</span>
+                        <span className="font-mono font-bold text-secondary">{analysis.spaceComplexity}</span>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="p-6 space-y-6">
-                    {/* problem desc */}
-                    {problemData?.description && (
-                      <div className="bg-base-100 rounded-xl shadow-sm p-5 border border-base-300">
-                        <h2 className="text-xl font-bold mb-4 text-base-content">Description</h2>
-                        <div className="space-y-3 text-base leading-relaxed">
-                          <p className="text-base-content/90">{problemData.description.text}</p>
-                          {problemData.description.notes?.map((note, idx) => (
-                            <p key={idx} className="text-base-content/90">
-                              {note}
-                            </p>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* examples section */}
-                    {problemData?.examples && problemData.examples.length > 0 && (
-                      <div className="bg-base-100 rounded-xl shadow-sm p-5 border border-base-300">
-                        <h2 className="text-xl font-bold mb-4 text-base-content">Examples</h2>
-
-                        <div className="space-y-4">
-                          {problemData.examples.map((example, idx) => (
-                            <div key={idx}>
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="badge badge-sm">{idx + 1}</span>
-                                <p className="font-semibold text-base-content">Example {idx + 1}</p>
-                              </div>
-                              <div className="bg-base-200 rounded-lg p-4 font-mono text-sm space-y-1.5">
-                                <div className="flex gap-2">
-                                  <span className="text-primary font-bold min-w-17.5">
-                                    Input:
-                                  </span>
-                                  <span>{example.input}</span>
-                                </div>
-                                <div className="flex gap-2">
-                                  <span className="text-secondary font-bold min-w-17.5">
-                                    Output:
-                                  </span>
-                                  <span>{example.output}</span>
-                                </div>
-                                {example.explanation && (
-                                  <div className="pt-2 border-t border-base-300 mt-2">
-                                    <span className="text-base-content/60 font-sans text-xs">
-                                      <span className="font-semibold">Explanation:</span>{" "}
-                                      {example.explanation}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Constraints */}
-                    {problemData?.constraints && problemData.constraints.length > 0 && (
-                      <div className="bg-base-100 rounded-xl shadow-sm p-5 border border-base-300">
-                        <h2 className="text-xl font-bold mb-4 text-base-content">Constraints</h2>
-                        <ul className="space-y-2 text-base-content/90">
-                          {problemData.constraints.map((constraint, idx) => (
-                            <li key={idx} className="flex gap-2">
-                              <span className="text-primary">•</span>
-                              <code className="text-sm">{constraint}</code>
+                    {/* Bugs */}
+                    {analysis.bugs?.length > 0 && (
+                      <div className="bg-error/10 border border-error/20 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-error mb-2">Issues Found</p>
+                        <ul className="space-y-1">
+                          {analysis.bugs.map((bug, i) => (
+                            <li key={i} className="text-xs text-base-content/70 flex gap-1.5">
+                              <span className="text-error mt-0.5">•</span>
+                              {bug}
                             </li>
                           ))}
                         </ul>
                       </div>
                     )}
+
+                    {/* Suggestions */}
+                    {analysis.suggestions?.length > 0 && (
+                      <div className="bg-primary/10 border border-primary/20 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-primary mb-2">Suggestions</p>
+                        <ul className="space-y-1">
+                          {analysis.suggestions.map((s, i) => (
+                            <li key={i} className="text-xs text-base-content/70 flex gap-1.5">
+                              <ChevronRight className="size-3 text-primary flex-shrink-0 mt-0.5" />
+                              {s}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Summary */}
+                    {analysis.summary && (
+                      <div className="bg-base-300 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-base-content/60 uppercase tracking-wider mb-1.5">Summary</p>
+                        <p className="text-xs text-base-content/70 leading-relaxed">{analysis.summary}</p>
+                      </div>
+                    )}
+
+                    <button onClick={analyzeCode} className="btn btn-secondary btn-sm w-full rounded-xl gap-2">
+                      <Sparkles className="size-3.5" /> Re-analyze
+                    </button>
                   </div>
-                </div>
-              </Panel>
-
-              <PanelResizeHandle className="h-2 bg-base-300 hover:bg-primary transition-colors cursor-row-resize" />
-
-              <Panel defaultSize={50} minSize={20}>
-                <PanelGroup direction="vertical">
-                  <Panel defaultSize={70} minSize={30}>
-                    <CodeEditorPanel
-                      selectedLanguage={selectedLanguage}
-                      code={code}
-                      isRunning={isRunning}
-                      onLanguageChange={handleLanguageChange}
-                      onCodeChange={(value) => setCode(value)}
-                      onRunCode={handleRunCode}
-                    />
-                  </Panel>
-
-                  <PanelResizeHandle className="h-2 bg-base-300 hover:bg-primary transition-colors cursor-row-resize" />
-
-                  <Panel defaultSize={30} minSize={15}>
-                    <OutputPanel output={output} />
-                  </Panel>
-                </PanelGroup>
-              </Panel>
-            </PanelGroup>
-          </Panel>
-
-          <PanelResizeHandle className="w-2 bg-base-300 hover:bg-primary transition-colors cursor-col-resize" />
-
-          {/* RIGHT PANEL - VIDEO CALLS, CHAT & AI ANALYSIS */}
-          <Panel defaultSize={50} minSize={30}>
-            <PanelGroup direction="vertical">
-              {/* VIDEO & CHAT */}
-              <Panel defaultSize={65} minSize={40}>
-                <div className="h-full bg-base-200 p-4 overflow-auto">
-                  {isInitializingCall ? (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="text-center">
-                        <Loader2Icon className="w-12 h-12 mx-auto animate-spin text-primary mb-4" />
-                        <p className="text-lg">Connecting to video call...</p>
-                      </div>
-                    </div>
-                  ) : !streamClient || !call ? (
-                    <div className="h-full flex items-center justify-center">
-                      <div className="card bg-base-100 shadow-xl max-w-md">
-                        <div className="card-body items-center text-center">
-                          <div className="w-24 h-24 bg-error/10 rounded-full flex items-center justify-center mb-4">
-                            <PhoneOffIcon className="w-12 h-12 text-error" />
-                          </div>
-                          <h2 className="card-title text-2xl">Connection Failed</h2>
-                          <p className="text-base-content/70">Unable to connect to the video call</p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="h-full">
-                      <StreamVideo client={streamClient}>
-                        <StreamCall call={call}>
-                          <VideoCallUI chatClient={chatClient} channel={channel} />
-                        </StreamCall>
-                      </StreamVideo>
-                    </div>
-                  )}
-                </div>
-              </Panel>
-
-              <PanelResizeHandle className="h-2 bg-base-300 hover:bg-primary transition-colors cursor-row-resize" />
-
-              {/* AI ANALYSIS PANEL */}
-              <Panel defaultSize={35} minSize={20}>
-                <div className="h-full bg-base-200 p-4 overflow-y-auto">
-                  <AIAnalysisPanel
-                    sessionId={id}
-                    code={code}
-                    language={selectedLanguage}
-                    problem={session?.problem}
-                  />
-                </div>
-              </Panel>
-            </PanelGroup>
-          </Panel>
-        </PanelGroup>
+                ) : (
+                  <div className="text-center py-8">
+                    <Sparkles className="size-8 text-base-content/20 mx-auto mb-3" />
+                    <p className="text-sm text-base-content/60 mb-1">No analysis yet</p>
+                    <p className="text-xs text-base-content/40 mb-4">Click the AI button to analyze your code</p>
+                    <button onClick={analyzeCode} className="btn btn-secondary btn-sm rounded-xl gap-2">
+                      <Sparkles className="size-3.5" /> Analyze Code
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-export default SessionPage;

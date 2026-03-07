@@ -1,103 +1,100 @@
-import {
-  CallControls,
-  CallingState,
-  SpeakerLayout,
-  useCallStateHooks,
-} from "@stream-io/video-react-sdk";
-import { Loader2Icon, MessageSquareIcon, UsersIcon, XIcon } from "lucide-react";
-import { useState } from "react";
-import { useNavigate } from "react-router";
-import { Channel, Chat, MessageInput, MessageList, Thread, Window } from "stream-chat-react";
+import { useRef, useState } from 'react';
+import { Video, VideoOff, Mic, MicOff, Users, X } from 'lucide-react';
+import toast from 'react-hot-toast';
 
-import "@stream-io/video-react-sdk/dist/css/styles.css";
-import "stream-chat-react/dist/css/v2/index.css";
+/**
+ * Standalone video call panel using WebRTC native APIs.
+ * Accepts localVideoRef and remoteVideoRef forwarded from parent.
+ */
+export default function VideoCallUI({
+  localVideoRef,
+  remoteVideoRef,
+  localName = 'You',
+  remoteName = 'Participant',
+  remoteConnected = false
+}) {
+  const [videoEnabled, setVideoEnabled] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const streamRef = useRef(null);
 
-function VideoCallUI({ chatClient, channel }) {
-  const navigate = useNavigate();
-  const { useCallCallingState, useParticipantCount } = useCallStateHooks();
-  const callingState = useCallCallingState();
-  const participantCount = useParticipantCount();
-  const [isChatOpen, setIsChatOpen] = useState(false);
+  const toggleVideo = async () => {
+    try {
+      if (!videoEnabled) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: audioEnabled });
+        streamRef.current = stream;
+        if (localVideoRef?.current) localVideoRef.current.srcObject = stream;
+        setVideoEnabled(true);
+      } else {
+        streamRef.current?.getVideoTracks().forEach((t) => t.stop());
+        if (localVideoRef?.current) localVideoRef.current.srcObject = null;
+        setVideoEnabled(false);
+      }
+    } catch {
+      toast.error('Camera access denied');
+    }
+  };
 
-  if (callingState === CallingState.JOINING) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center">
-          <Loader2Icon className="w-12 h-12 mx-auto animate-spin text-primary mb-4" />
-          <p className="text-lg">Joining call...</p>
-        </div>
-      </div>
-    );
-  }
+  const toggleAudio = async () => {
+    try {
+      if (!audioEnabled) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
+        setAudioEnabled(true);
+      } else {
+        streamRef.current?.getAudioTracks().forEach((t) => t.stop());
+        setAudioEnabled(false);
+      }
+    } catch {
+      toast.error('Microphone access denied');
+    }
+  };
 
   return (
-    <div className="h-full flex gap-3 relative str-video">
-      <div className="flex-1 flex flex-col gap-3">
-        {/* Participants count badge and Chat Toggle */}
-        <div className="flex items-center justify-between gap-2 bg-base-100 p-3 rounded-lg shadow">
-          <div className="flex items-center gap-2">
-            <UsersIcon className="w-5 h-5 text-primary" />
-            <span className="font-semibold">
-              {participantCount} {participantCount === 1 ? "participant" : "participants"}
-            </span>
+    <div className="space-y-2">
+      {/* Remote video */}
+      <div className="relative aspect-video bg-base-300 rounded-xl overflow-hidden">
+        <video ref={remoteVideoRef} autoPlay className="w-full h-full object-cover" />
+        {!remoteConnected && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <Users className="size-6 text-base-content/20 mb-1" />
+            <p className="text-xs text-base-content/30">Waiting for {remoteName}...</p>
           </div>
-          {chatClient && channel && (
-            <button
-              onClick={() => setIsChatOpen(!isChatOpen)}
-              className={`btn btn-sm gap-2 ${isChatOpen ? "btn-primary" : "btn-ghost"}`}
-              title={isChatOpen ? "Hide chat" : "Show chat"}
-            >
-              <MessageSquareIcon className="size-4" />
-              Chat
-            </button>
-          )}
-        </div>
-
-        <div className="flex-1 bg-base-300 rounded-lg overflow-hidden relative">
-          <SpeakerLayout />
-        </div>
-
-        <div className="bg-base-100 p-3 rounded-lg shadow flex justify-center">
-          <CallControls onLeave={() => navigate("/dashboard")} />
+        )}
+        <div className="absolute bottom-1 left-2 text-xs text-white/60 bg-black/40 rounded px-1.5 py-0.5">
+          {remoteName}
         </div>
       </div>
 
-      {/* CHAT SECTION */}
-
-      {chatClient && channel && (
-        <div
-          className={`flex flex-col rounded-lg shadow overflow-hidden bg-[#272a30] transition-all duration-300 ease-in-out ${
-            isChatOpen ? "w-80 opacity-100" : "w-0 opacity-0"
-          }`}
-        >
-          {isChatOpen && (
-            <>
-              <div className="bg-[#1c1e22] p-3 border-b border-[#3a3d44] flex items-center justify-between">
-                <h3 className="font-semibold text-white">Session Chat</h3>
-                <button
-                  onClick={() => setIsChatOpen(false)}
-                  className="text-gray-400 hover:text-white transition-colors"
-                  title="Close chat"
-                >
-                  <XIcon className="size-5" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden stream-chat-dark">
-                <Chat client={chatClient} theme="str-chat__theme-dark">
-                  <Channel channel={channel}>
-                    <Window>
-                      <MessageList />
-                      <MessageInput />
-                    </Window>
-                    <Thread />
-                  </Channel>
-                </Chat>
-              </div>
-            </>
-          )}
+      {/* Local video */}
+      <div className="relative aspect-video bg-base-300 rounded-xl overflow-hidden">
+        <video ref={localVideoRef} autoPlay muted className="w-full h-full object-cover" />
+        {!videoEnabled && (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <VideoOff className="size-6 text-base-content/20" />
+          </div>
+        )}
+        <div className="absolute bottom-1 left-2 text-xs text-white/60 bg-black/40 rounded px-1.5 py-0.5">
+          {localName}
         </div>
-      )}
+      </div>
+
+      {/* Controls */}
+      <div className="flex justify-center gap-2">
+        <button
+          onClick={toggleVideo}
+          className={`btn btn-sm btn-circle ${videoEnabled ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+          title={videoEnabled ? 'Turn off camera' : 'Turn on camera'}
+        >
+          {videoEnabled ? <Video className="size-4" /> : <VideoOff className="size-4" />}
+        </button>
+        <button
+          onClick={toggleAudio}
+          className={`btn btn-sm btn-circle ${audioEnabled ? 'btn-primary' : 'btn-ghost border border-base-300'}`}
+          title={audioEnabled ? 'Mute microphone' : 'Unmute microphone'}
+        >
+          {audioEnabled ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+        </button>
+      </div>
     </div>
   );
 }
-export default VideoCallUI;
