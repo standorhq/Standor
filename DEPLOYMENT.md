@@ -40,7 +40,7 @@ This guide shows how to deploy Standor using completely free services.
 
 Example:
 ```
-mongodb+srv://standor:YOUR_PASSWORD@cluster0.xxxxx.mongodb.net/standor?retryWrites=true&w=majority
+<your-mongodb-atlas-connection-string>
 ```
 
 ## 2️⃣ Backend Deployment (Render)
@@ -73,7 +73,7 @@ In Render dashboard, add:
 PORT=5001
 NODE_ENV=production
 CLIENT_URL=https://your-frontend.vercel.app
-DB_URL=mongodb+srv://standor:PASSWORD@cluster0.xxxxx.mongodb.net/standor
+DB_URL=<your-mongodb-atlas-connection-string>
 AUTH_SECRET=your-secret-key-minimum-32-characters-long
 JWT_SECRET=your-jwt-secret-key-also-long
 SMTP_HOST=smtp-relay.brevo.com

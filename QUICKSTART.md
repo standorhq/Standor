@@ -34,7 +34,7 @@ NODE_ENV=development
 CLIENT_URL=http://localhost:5173
 
 # MongoDB Atlas (free tier)
-DB_URL=mongodb+srv://YOUR_USERNAME:YOUR_PASSWORD@cluster.mongodb.net/standor
+DB_URL=<your-mongodb-atlas-connection-string>
 
 # Authentication
 AUTH_SECRET=your-secret-key-minimum-32-characters-long
