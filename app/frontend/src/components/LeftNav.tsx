@@ -41,31 +41,49 @@ function NavItem({ href, label, Icon, active, expanded }: NavItemProps) {
       href={href}
       aria-label={label}
       title={expanded ? undefined : label}
-      className={`group relative flex h-10 items-center rounded-lg transition-all duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-teal-500 ${
-        expanded ? 'gap-3 px-3' : 'justify-center px-0'
-      } ${
-        active
-          ? 'bg-teal-500/10 text-teal-400'
-          : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
-      }`}
+      className={`group relative flex h-10 items-center rounded-lg outline-none
+                  transition-colors duration-120
+                  focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1 focus-visible:ring-offset-bg-surface
+                  ${expanded ? 'gap-3 px-3' : 'justify-center px-0'}
+                  ${active
+                    ? 'bg-teal-500/10 text-teal-400'
+                    : 'text-text-secondary hover:bg-bg-elevated hover:text-text-primary'
+                  }`}
     >
+      {/* Active indicator */}
       {active && (
-        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-teal-400" />
+        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-teal-400" aria-hidden="true" />
       )}
+
       <Icon className="h-[18px] w-[18px] shrink-0" aria-hidden="true" />
+
       <AnimatePresence>
         {expanded && (
           <motion.span
-            initial={{ opacity: 0, x: -6 }}
+            initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -6 }}
-            transition={{ duration: 0.15 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.15, ease: [0.2, 0.9, 0.2, 1] }}
             className="overflow-hidden whitespace-nowrap text-sm font-medium"
           >
             {label}
           </motion.span>
         )}
       </AnimatePresence>
+
+      {/* Tooltip when collapsed */}
+      {!expanded && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute left-[calc(100%+10px)] z-50 whitespace-nowrap
+                     rounded-lg border border-border bg-bg-panel px-2.5 py-1.5
+                     text-xs font-medium text-text-primary shadow-float
+                     opacity-0 transition-opacity duration-120
+                     group-hover:opacity-100 group-focus-visible:opacity-100"
+        >
+          {label}
+        </span>
+      )}
     </Link>
   );
 }
@@ -76,17 +94,21 @@ export function LeftNav() {
 
   return (
     <motion.aside
-      animate={{ width: expanded ? 280 : 72 }}
-      transition={{ duration: 0.2, ease: [0.2, 0.9, 0.2, 1] }}
-      className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-border bg-bg-surface"
+      animate={{ width: expanded ? 320 : 72 }}
+      transition={{ duration: 0.22, ease: [0.2, 0.9, 0.2, 1] }}
+      className="fixed inset-y-0 left-0 z-30 flex flex-col border-r border-border bg-bg-surface overflow-hidden"
       aria-label="Main navigation"
     >
       {/* Logo */}
-      <div className={`flex h-[var(--topbar-h)] shrink-0 items-center border-b border-border ${expanded ? 'px-4' : 'justify-center'}`}>
+      <div
+        className={`flex h-[var(--topbar-h)] shrink-0 items-center border-b border-border ${
+          expanded ? 'px-4' : 'justify-center px-0'
+        }`}
+      >
         <Link
           href="/dashboard"
           aria-label="Standor home"
-          className="flex items-center gap-2.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-500 rounded"
+          className="flex items-center gap-2.5 rounded outline-none focus-visible:ring-2 focus-visible:ring-teal-500"
         >
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-500/15">
             <Zap className="h-4 w-4 text-teal-400" aria-hidden="true" />
@@ -94,11 +116,11 @@ export function LeftNav() {
           <AnimatePresence>
             {expanded && (
               <motion.span
-                initial={{ opacity: 0, x: -6 }}
+                initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -6 }}
-                transition={{ duration: 0.15 }}
-                className="text-[15px] font-extrabold tracking-tight text-text-primary"
+                exit={{ opacity: 0, x: -8 }}
+                transition={{ duration: 0.15, ease: [0.2, 0.9, 0.2, 1] }}
+                className="text-[15px] font-extrabold tracking-tight text-text-primary whitespace-nowrap"
               >
                 Standor
               </motion.span>
@@ -108,7 +130,7 @@ export function LeftNav() {
       </div>
 
       {/* Nav links */}
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden p-2">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden p-2" aria-label="Primary">
         {NAV_ITEMS.map(({ href, label, Icon }) => (
           <NavItem
             key={href}
@@ -122,7 +144,7 @@ export function LeftNav() {
       </nav>
 
       {/* Bottom section */}
-      <div className="flex flex-col gap-1 border-t border-border p-2">
+      <div className="flex flex-col gap-0.5 border-t border-border p-2">
         {BOTTOM_ITEMS.map(({ href, label, Icon }) => (
           <NavItem
             key={href}
@@ -138,24 +160,26 @@ export function LeftNav() {
         <button
           onClick={() => setExpanded((v) => !v)}
           aria-label={expanded ? 'Collapse sidebar' : 'Expand sidebar'}
-          className={`flex h-10 items-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-elevated hover:text-text-secondary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-teal-500 ${
-            expanded ? 'gap-3 px-3' : 'justify-center px-0'
-          }`}
+          className={`flex h-10 items-center rounded-lg text-text-tertiary outline-none
+                      transition-colors duration-120
+                      hover:bg-bg-elevated hover:text-text-secondary
+                      focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-1 focus-visible:ring-offset-bg-surface
+                      ${expanded ? 'gap-3 px-3' : 'justify-center px-0'}`}
         >
           <motion.span
             animate={{ rotate: expanded ? 180 : 0 }}
-            transition={{ duration: 0.2, ease: [0.2, 0.9, 0.2, 1] }}
+            transition={{ duration: 0.22, ease: [0.2, 0.9, 0.2, 1] }}
           >
             <ChevronRight className="h-4 w-4 shrink-0" aria-hidden="true" />
           </motion.span>
           <AnimatePresence>
             {expanded && (
               <motion.span
-                initial={{ opacity: 0, x: -6 }}
+                initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -6 }}
+                exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.15 }}
-                className="text-sm"
+                className="text-sm whitespace-nowrap"
               >
                 Collapse
               </motion.span>
