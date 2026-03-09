@@ -29,7 +29,8 @@ export const initSocket = (httpServer: HttpServer) => {
         if (!token) return next(new Error('No token'))
         try {
             const payload = jwt.verify(token, env.JWT_SECRET) as TokenPayload
-            (socket as any).userId = payload.userId
+            ;(socket as any).userId = payload.userId
+            ;(socket as any).userName = (socket.handshake.auth as any).userName || 'Anonymous'
             next()
         } catch {
             next(new Error('Invalid token'))

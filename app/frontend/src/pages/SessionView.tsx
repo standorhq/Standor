@@ -10,10 +10,11 @@ import {
   ArrowLeft, Play, Loader2, Brain, MessageSquare, ChevronDown,
   Copy, Check, Users, Square, Send, PanelLeftClose, PanelLeftOpen,
   AlertCircle, CheckCircle2, Clock, Zap, Wifi, WifiOff,
-  Video, VideoOff, Mic, MicOff, PhoneOff
+  Video, VideoOff, Mic, MicOff, PhoneOff, Monitor, FlaskConical,
+  CircleCheck, CircleX, ChevronRight
 } from 'lucide-react';
 import useStore from '../store/useStore';
-import { roomsApi, codeExecutionApi, InterviewRoom, AIAnalysis, ExecutionResult } from '../utils/api';
+import { roomsApi, codeExecutionApi, problemsApi, InterviewRoom, AIAnalysis, ExecutionResult, ProblemDetail, RunTestsResult } from '../utils/api';
 import { MediaProvider, useMedia } from '../components/session/MediaProvider';
 import { EditorSkeleton } from '../components/Skeletons';
 
@@ -45,7 +46,8 @@ interface ChatMessage {
   mine?: boolean;
 }
 
-type RightTab = 'ai' | 'chat';
+type RightTab = 'ai' | 'chat' | 'output';
+type LeftTab = 'description' | 'tests';
 
 function RemoteVideo({ stream, name }: { stream: MediaStream; name: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -75,12 +77,19 @@ function SessionInner({ socket }: { socket: Socket | null }) {
     toggleAudio,
     toggleVideo,
     audioEnabled,
-    videoEnabled
+    videoEnabled,
+    getPeerConnections,
   } = useMedia();
 
   // Room state
   const [room, setRoom] = useState<InterviewRoom | null>(null);
   const [loadingRoom, setLoadingRoom] = useState(true);
+
+  // Problem state
+  const [problem, setProblem] = useState<ProblemDetail | null>(null);
+  const [leftTab, setLeftTab] = useState<LeftTab>('description');
+  const [runningTests, setRunningTests] = useState(false);
+  const [testResults, setTestResults] = useState<RunTestsResult | null>(null);
 
   // Editor state
   const [code, setCode] = useState('');
@@ -112,6 +121,16 @@ function SessionInner({ socket }: { socket: Socket | null }) {
   const [elapsed, setElapsed] = useState(0);
   const [showShare, setShowShare] = useState(false);
   const [remoteUsers, setRemoteUsers] = useState<Array<{ name: string; color: string }>>([]);
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+
+  // Network quality state
+  type NetQuality = 'good' | 'fair' | 'poor' | 'unknown';
+  const [netQuality, setNetQuality] = useState<NetQuality>('unknown');
+  const [netStats, setNetStats] = useState<{ rtt?: number; loss?: number }>({});
+
+  // AI hints state (host-only)
+  const [hintsEnabled, setHintsEnabled] = useState(false);
+  const [hintLoading, setHintLoading] = useState(false);
 
   // Yjs refs
   const ydocRef = useRef<Y.Doc | null>(null);
@@ -119,6 +138,8 @@ function SessionInner({ socket }: { socket: Socket | null }) {
   const yjsProviderRef = useRef<WebsocketProvider | null>(null);
   const monacoEditorRef = useRef<IStandaloneCodeEditor | null>(null);
   const [yjsConnected, setYjsConnected] = useState(false);
+  // Prevent Yjs <-> Monaco feedback loop
+  const isApplyingYjs = useRef(false);
 
   // Load room
   useEffect(() => {
@@ -140,6 +161,10 @@ function SessionInner({ socket }: { socket: Socket | null }) {
         }
         // Join media
         if (user?.name) joinMedia(roomId, (user as any)._id || (user as any).id, user.name);
+        // Load problem details (best-effort)
+        if (r.problem) {
+          problemsApi.getBySlug(r.problem).then(setProblem).catch(() => {/* problem not in DB yet */});
+        }
       })
       .catch(() => toast.error('Session not found'))
       .finally(() => setLoadingRoom(false));
@@ -148,6 +173,9 @@ function SessionInner({ socket }: { socket: Socket | null }) {
   // Socket logic
   useEffect(() => {
     if (!socket || !roomId) return;
+
+        // Critical: join the socket room
+    socket.emit('join-room', roomId);
 
     socket.on('room-info', ({ participants: p }: { participants: number }) => setParticipants(p));
     socket.on('user-joined', () => {
@@ -253,11 +281,14 @@ function SessionInner({ socket }: { socket: Socket | null }) {
     ytext.observe(() => {
       const newContent = ytext.toString();
       setCode(newContent);
-      const editorModel = monacoEditorRef.current?.getModel();
+      const editor = monacoEditorRef.current;
+      const editorModel = editor?.getModel();
       if (editorModel && editorModel.getValue() !== newContent) {
-        const pos = monacoEditorRef.current?.getPosition();
+        isApplyingYjs.current = true;
+        const pos = editor?.getPosition();
         editorModel.setValue(newContent);
-        if (pos) monacoEditorRef.current?.setPosition(pos);
+        if (pos) editor?.setPosition(pos);
+        isApplyingYjs.current = false;
       }
     });
 
@@ -289,6 +320,80 @@ function SessionInner({ socket }: { socket: Socket | null }) {
     return () => clearInterval(id);
   }, [room]);
 
+  // Autosave snapshot every 30 seconds
+  useEffect(() => {
+    if (!roomId || !room || room.status !== 'ACTIVE') return;
+    const id = setInterval(async () => {
+      const currentCode = ytextRef.current?.toString() || code;
+      if (!currentCode.trim()) return;
+      try {
+        await roomsApi.snapshot(roomId, { content: currentCode, language });
+      } catch { /* silent autosave fail */ }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [roomId, room, language, code]);
+
+  // Network quality via WebRTC getStats
+  useEffect(() => {
+    const id = setInterval(async () => {
+      const pcs = getPeerConnections();
+      if (pcs.size === 0) { setNetQuality('unknown'); return; }
+      const pc = pcs.values().next().value as RTCPeerConnection;
+      try {
+        const stats = await pc.getStats();
+        let rtt: number | undefined;
+        let packetsLost = 0, packetsReceived = 0;
+        stats.forEach((r: RTCStats) => {
+          if (r.type === 'remote-inbound-rtp') {
+            const rr = r as any;
+            if (typeof rr.roundTripTime === 'number') rtt = rr.roundTripTime * 1000;
+            packetsLost += rr.packetsLost || 0;
+          }
+          if (r.type === 'inbound-rtp') {
+            const ir = r as any;
+            packetsReceived += ir.packetsReceived || 0;
+          }
+        });
+        const total = packetsReceived + packetsLost;
+        const loss = total > 0 ? (packetsLost / total) * 100 : 0;
+        let q: NetQuality = 'unknown';
+        if (rtt !== undefined) {
+          if (rtt < 150 && loss < 1) q = 'good';
+          else if (rtt < 300 && loss < 5) q = 'fair';
+          else q = 'poor';
+        }
+        setNetQuality(q);
+        setNetStats({ rtt: rtt ? Math.round(rtt) : undefined, loss: Math.round(loss * 10) / 10 });
+      } catch { /* ignore */ }
+    }, 3000);
+    return () => clearInterval(id);
+  }, [getPeerConnections]);
+
+  // AI hints — listen for hint from server
+  useEffect(() => {
+    if (!socket) return;
+    const onHint = ({ hint }: { hint: string }) => {
+      setHintLoading(false);
+      toast(hint, { duration: 10_000, icon: '💡' });
+    };
+    socket.on('ai:hint', onHint);
+    return () => { socket.off('ai:hint', onHint); };
+  }, [socket]);
+
+  // AI hints — auto-request when host enables hints
+  useEffect(() => {
+    if (!hintsEnabled || !socket || !roomId || !room) return;
+    const request = () => {
+      const currentCode = ytextRef.current?.toString() || code;
+      if (!currentCode.trim()) return;
+      setHintLoading(true);
+      socket.emit('ai:hint-request', { roomId, code: currentCode, language, problem: room.problem || '' });
+    };
+    request();
+    const id = setInterval(request, 45_000);
+    return () => clearInterval(id);
+  }, [hintsEnabled, socket, roomId, room, language, code]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, typingUsers]);
@@ -296,6 +401,8 @@ function SessionInner({ socket }: { socket: Socket | null }) {
   const handleEditorMount = useCallback((editorInstance: IStandaloneCodeEditor) => {
     monacoEditorRef.current = editorInstance;
     editorInstance.onDidChangeModelContent((e) => {
+      // Skip when Yjs is applying remote changes - prevents infinite loop
+      if (isApplyingYjs.current) return;
       const ytext = ytextRef.current;
       const ydoc = ydocRef.current;
       if (!ytext || !ydoc) return;
@@ -318,6 +425,20 @@ function SessionInner({ socket }: { socket: Socket | null }) {
     } catch (err: any) {
       toast.error('Execution failed');
     } finally { setExecuting(false); }
+  };
+
+  const handleRunTests = async () => {
+    if (!code.trim() || !problem) return;
+    setRunningTests(true);
+    setLeftTab('tests');
+    try {
+      const res = await problemsApi.runTests(problem.title, { language, code });
+      setTestResults(res);
+    } catch {
+      toast.error('Failed to run tests');
+    } finally {
+      setRunningTests(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -396,12 +517,64 @@ function SessionInner({ socket }: { socket: Socket | null }) {
           <button onClick={toggleVideo} className={`p-1.5 rounded-lg transition-colors ${videoEnabled ? 'text-neutral-400 hover:bg-white/10' : 'text-red-400 bg-red-400/10'}`}>
             {videoEnabled ? <Video size={14} /> : <VideoOff size={14} />}
           </button>
+          <button
+            title={screenStream ? 'Stop sharing' : 'Share screen'}
+            onClick={async () => {
+              if (screenStream) {
+                screenStream.getTracks().forEach(t => t.stop());
+                setScreenStream(null);
+              } else {
+                try {
+                  const stream = await (navigator.mediaDevices as any).getDisplayMedia({ video: true });
+                  setScreenStream(stream);
+                  stream.getVideoTracks()[0].onended = () => setScreenStream(null);
+                } catch { /* user cancelled */ }
+              }
+            }}
+            className={`p-1.5 rounded-lg transition-colors ${screenStream ? 'text-accent-tertiary bg-accent-tertiary/10' : 'text-neutral-400 hover:bg-white/10'}`}
+          >
+            <Monitor size={14} />
+          </button>
         </div>
 
         <div className="flex items-center gap-1.5 text-xs text-neutral-500 font-mono">
           <Clock size={13} />
           <span>{Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}</span>
         </div>
+
+        {/* Network Quality Indicator */}
+        {(() => {
+          const NET_DOT: Record<string, string> = { good: '#22c55e', fair: '#f59e0b', poor: '#ef4444', unknown: '#4b5563' };
+          const NET_LABEL: Record<string, string> = { good: 'Excellent', fair: 'Fair', poor: 'Poor', unknown: 'No peers' };
+          return (
+            <div className="relative group flex items-center">
+              <div
+                className="w-2 h-2 rounded-full cursor-default"
+                style={{
+                  backgroundColor: NET_DOT[netQuality],
+                  boxShadow: netQuality !== 'unknown' ? `0 0 6px ${NET_DOT[netQuality]}90` : 'none',
+                }}
+              />
+              <div className="absolute top-full right-0 mt-2 px-3 py-2 rounded-xl bg-[#0f0f0f] border border-white/[0.08] text-[11px] text-white whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-2xl min-w-[140px]">
+                <div className="font-semibold mb-1" style={{ color: NET_DOT[netQuality] }}>Network: {NET_LABEL[netQuality]}</div>
+                {netStats.rtt !== undefined && <div className="text-neutral-400 font-mono">RTT: {netStats.rtt}ms</div>}
+                {(netStats.loss ?? 0) > 0 && <div className="text-neutral-400 font-mono">Loss: {netStats.loss}%</div>}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* AI Hints Toggle — host only */}
+        {isHost && room?.status === 'ACTIVE' && (
+          <button
+            onClick={() => setHintsEnabled(v => !v)}
+            title={hintsEnabled ? 'Disable AI hints' : 'Send AI hints to candidate'}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] border transition-colors ${hintsEnabled ? 'bg-accent-tertiary/10 border-accent-tertiary/30 text-accent-tertiary' : 'bg-white/[0.04] border-white/[0.06] text-neutral-500 hover:text-neutral-300'}`}
+          >
+            {hintLoading ? <Loader2 size={11} className="animate-spin" /> : <Zap size={11} />}
+            {hintsEnabled ? 'Hints On' : 'Hints'}
+          </button>
+        )}
 
         {/* Analyze */}
         <button onClick={handleAnalyze} disabled={analyzing} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.08] text-neutral-300 hover:bg-white/[0.08] text-xs">
@@ -421,22 +594,161 @@ function SessionInner({ socket }: { socket: Socket | null }) {
 
       <div className="flex flex-1 overflow-hidden relative">
         {/* Left: Problem */}
-        <div className={`flex flex-col border-r border-border bg-bg-900 ${leftCollapsed ? 'w-10' : 'w-72'} transition-all shrink-0`}>
-          <div className="flex items-center px-3 py-2 border-b border-border">
-            {!leftCollapsed && <span className="text-[10px] uppercase font-mono text-neutral-600 tracking-widest">Problem</span>}
+        <div className={`flex flex-col border-r border-border bg-bg-900 ${leftCollapsed ? 'w-10' : 'w-80'} transition-all shrink-0`}>
+          <div className="flex items-center px-3 py-2 border-b border-border shrink-0">
+            {!leftCollapsed && (
+              <>
+                <button onClick={() => setLeftTab('description')} className={`text-[10px] uppercase font-mono tracking-widest px-2 py-1 rounded transition-colors ${leftTab === 'description' ? 'text-white' : 'text-neutral-600 hover:text-neutral-400'}`}>Problem</button>
+                <button onClick={() => setLeftTab('tests')} className={`text-[10px] uppercase font-mono tracking-widest px-2 py-1 rounded transition-colors flex items-center gap-1 ${leftTab === 'tests' ? 'text-white' : 'text-neutral-600 hover:text-neutral-400'}`}>
+                  <FlaskConical size={10} /> Tests
+                  {testResults && <span className={`text-[9px] font-bold ml-0.5 ${testResults.passed === testResults.total ? 'text-accent' : 'text-red-400'}`}>{testResults.passed}/{testResults.total}</span>}
+                </button>
+              </>
+            )}
             <button onClick={() => setLeftCollapsed(!leftCollapsed)} className="ml-auto text-neutral-600 hover:text-white transition-colors">
               {leftCollapsed ? <PanelLeftOpen size={14} /> : <PanelLeftClose size={14} />}
             </button>
           </div>
-          {!leftCollapsed && <div className="p-4 text-neutral-400 text-xs leading-relaxed">{room.problem} description...</div>}
+
+          {!leftCollapsed && leftTab === 'description' && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {/* Title + difficulty */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <h2 className="text-sm font-bold text-white">{room.problem}</h2>
+                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${DIFFICULTY_COLORS[room.difficulty] || DIFFICULTY_COLORS.MEDIUM}`}>{room.difficulty}</span>
+                </div>
+                {problem?.tags && (
+                  <div className="flex flex-wrap gap-1">
+                    {problem.tags.map(t => <span key={t} className="text-[9px] font-mono px-1.5 py-0.5 bg-white/[0.04] border border-white/[0.06] rounded text-neutral-500">{t}</span>)}
+                  </div>
+                )}
+              </div>
+
+              {/* Description */}
+              <div className="text-xs text-neutral-400 leading-relaxed">
+                {problem?.description || 'Loading problem description...'}
+              </div>
+
+              {/* Examples */}
+              {problem?.examples && problem.examples.length > 0 && (
+                <div className="space-y-3">
+                  {problem.examples.map((ex, i) => (
+                    <div key={i} className="bg-black/30 border border-white/[0.05] rounded-xl p-3 space-y-2">
+                      <span className="text-[9px] font-mono text-neutral-600 uppercase">Example {i + 1}</span>
+                      <div>
+                        <span className="text-[9px] font-mono text-neutral-600 block">Input:</span>
+                        <pre className="text-[11px] font-mono text-neutral-300 whitespace-pre-wrap">{ex.input}</pre>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-mono text-neutral-600 block">Output:</span>
+                        <pre className="text-[11px] font-mono text-accent-tertiary whitespace-pre-wrap">{ex.output}</pre>
+                      </div>
+                      {ex.explanation && <p className="text-[10px] text-neutral-500 italic">{ex.explanation}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Run Tests CTA */}
+              {problem && (
+                <button
+                  onClick={handleRunTests}
+                  disabled={runningTests}
+                  className="w-full flex items-center justify-center gap-2 py-2 mt-2 rounded-xl bg-accent/10 border border-accent/20 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors disabled:opacity-50"
+                >
+                  {runningTests ? <Loader2 size={12} className="animate-spin" /> : <FlaskConical size={12} />}
+                  {runningTests ? 'Running...' : 'Run Test Cases'}
+                </button>
+              )}
+            </div>
+          )}
+
+          {!leftCollapsed && leftTab === 'tests' && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <button
+                onClick={handleRunTests}
+                disabled={runningTests || !problem}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-accent/10 border border-accent/20 text-accent text-xs font-semibold hover:bg-accent/20 transition-colors disabled:opacity-50"
+              >
+                {runningTests ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                {runningTests ? 'Running...' : 'Run Tests'}
+              </button>
+
+              {runningTests && (
+                <div className="flex flex-col items-center justify-center py-8 gap-2 text-neutral-500">
+                  <Loader2 size={20} className="animate-spin text-accent" />
+                  <span className="text-[10px] font-mono uppercase tracking-widest animate-pulse">Running test cases...</span>
+                </div>
+              )}
+
+              {testResults && !runningTests && (
+                <div className="space-y-2">
+                  {/* Summary */}
+                  <div className={`flex items-center justify-between px-3 py-2 rounded-xl border ${testResults.passed === testResults.total ? 'bg-accent/5 border-accent/20 text-accent' : 'bg-red-500/5 border-red-500/20 text-red-400'}`}>
+                    <span className="text-xs font-bold">{testResults.passed === testResults.total ? '✓ All Tests Passed' : `${testResults.passed}/${testResults.total} Passed`}</span>
+                    <span className="text-[10px] font-mono">{testResults.passed}/{testResults.total}</span>
+                  </div>
+
+                  {/* Individual test cases */}
+                  {testResults.results.map((tc) => (
+                    <div key={tc.index} className={`rounded-xl border overflow-hidden ${tc.passed ? 'border-accent/15 bg-accent/5' : 'border-red-500/20 bg-red-500/5'}`}>
+                      <div className="flex items-center gap-2 px-3 py-2">
+                        {tc.passed
+                          ? <CircleCheck size={12} className="text-accent shrink-0" />
+                          : <CircleX size={12} className="text-red-400 shrink-0" />}
+                        <span className="text-[10px] font-mono text-neutral-400">Case {tc.index}</span>
+                        {tc.hidden && <span className="text-[8px] font-mono text-neutral-600 ml-auto">hidden</span>}
+                        <span className={`text-[9px] font-bold ml-auto ${tc.passed ? 'text-accent' : 'text-red-400'}`}>{tc.passed ? 'PASS' : 'FAIL'}</span>
+                      </div>
+                      {!tc.hidden && !tc.passed && (
+                        <div className="px-3 pb-2 space-y-1 text-[10px] font-mono">
+                          {tc.input && <div><span className="text-neutral-600">in: </span><span className="text-neutral-400">{tc.input}</span></div>}
+                          {tc.expected && <div><span className="text-neutral-600">exp: </span><span className="text-accent-tertiary">{tc.expected}</span></div>}
+                          {tc.actual && <div><span className="text-neutral-600">got: </span><span className="text-red-300">{tc.actual}</span></div>}
+                          {tc.stderr && <div className="text-red-500/70 truncate">{tc.stderr.slice(0, 120)}</div>}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!testResults && !runningTests && (
+                <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl glass-panel flex items-center justify-center text-neutral-600">
+                    <FlaskConical size={18} />
+                  </div>
+                  <p className="text-[11px] text-neutral-600">{problem ? 'Click "Run Tests" to validate your solution' : 'No problem loaded yet'}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Center: Editor */}
         <div className="flex flex-col flex-1 overflow-hidden bg-black/20">
           <div className="flex items-center gap-3 px-3 h-10 border-b border-border shrink-0">
-            <span className="text-[10px] font-mono text-neutral-400 uppercase">{language}</span>
+            <div className="relative">
+              <button onClick={() => setShowLangMenu(v => !v)} className="flex items-center gap-1 text-[10px] font-mono text-neutral-400 hover:text-white transition-colors uppercase">
+                {language} <ChevronDown size={9} />
+              </button>
+              {showLangMenu && (
+                <div className="absolute top-full left-0 mt-1 bg-[#0f0f0f] border border-white/[0.08] rounded-lg overflow-hidden z-50 shadow-2xl min-w-[120px]">
+                  {['javascript','typescript','python','java','cpp','go','rust'].map(l => (
+                    <button key={l} onClick={() => { setLanguage(l); setShowLangMenu(false); }} className={`w-full text-left px-3 py-1.5 text-[10px] font-mono hover:bg-white/[0.06] transition-colors ${l === language ? 'text-accent' : 'text-neutral-400'}`}>{l}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex-1" />
             <div className={`w-1.5 h-1.5 rounded-full ${yjsConnected ? 'bg-accent shadow-[0_0_8px_rgba(19,127,236,0.4)]' : 'bg-neutral-700'}`} />
+            {problem && (
+              <button onClick={handleRunTests} disabled={runningTests} className="px-3 py-1 bg-white/[0.06] border border-white/[0.08] text-neutral-300 rounded text-[10px] font-bold hover:bg-white/[0.1] transition-colors uppercase tracking-wider flex items-center gap-1">
+                {runningTests ? <Loader2 size={10} className="animate-spin" /> : <FlaskConical size={10} />}
+                {runningTests ? '' : 'Tests'}
+              </button>
+            )}
             <button onClick={handleRun} disabled={executing} className="px-3 py-1 bg-accent text-white rounded text-[10px] font-bold hover:bg-accent-secondary transition-colors uppercase tracking-wider">
               {executing ? <Loader2 size={10} className="animate-spin" /> : 'Run Code'}
             </button>
@@ -460,6 +772,12 @@ function SessionInner({ socket }: { socket: Socket | null }) {
 
             {/* WebRTC Video Overlay */}
             <div className="absolute bottom-4 right-4 flex flex-col gap-3 pointer-events-none">
+              {screenStream && (
+                <div className="relative w-48 h-32 bg-black rounded-lg overflow-hidden border border-accent-tertiary/40 shadow-2xl pointer-events-auto">
+                  <video ref={v => { if (v) v.srcObject = screenStream }} autoPlay muted playsInline className="w-full h-full object-contain" />
+                  <div className="absolute bottom-1 left-1 bg-black/60 px-1.5 py-0.5 rounded text-[8px] font-mono text-accent-tertiary">Screen</div>
+                </div>
+              )}
               {localStream && (
                 <div className="relative w-32 h-24 bg-black rounded-lg overflow-hidden border border-white/20 shadow-2xl pointer-events-auto">
                   <video ref={v => { if (v) v.srcObject = localStream }} autoPlay muted playsInline className="w-full h-full object-cover grayscale opacity-80" />
@@ -478,15 +796,65 @@ function SessionInner({ socket }: { socket: Socket | null }) {
         {/* Right Tab */}
         <div className="flex flex-col border-l border-border bg-bg-900 w-80 shrink-0">
           <div className="flex border-b border-border">
-            {['chat', 'ai'].map(t => (
-              <button key={t} onClick={() => setRightTab(t as RightTab)} className={`flex-1 py-2.5 text-[10px] uppercase font-mono tracking-widest border-b-2 transition-colors ${rightTab === t ? 'text-white border-white' : 'text-neutral-600 border-transparent hover:text-neutral-400'}`}>
-                {t}
+            {(['chat', 'output', 'ai'] as RightTab[]).map(t => (
+              <button key={t} onClick={() => setRightTab(t)} className={`flex-1 py-2.5 text-[10px] uppercase font-mono tracking-widest border-b-2 transition-colors ${rightTab === t ? 'text-white border-white' : 'text-neutral-600 border-transparent hover:text-neutral-400'}`}>
+                {t === 'output' ? 'run' : t}
               </button>
             ))}
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 flex flex-col">
-            {rightTab === 'chat' ? (
+            {rightTab === 'output' ? (
+              <div className="flex-1 flex flex-col gap-3">
+                {/* stdin */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest">Stdin (optional)</span>
+                    <button onClick={() => setShowStdin(v => !v)} className="text-[9px] text-neutral-500 hover:text-white transition-colors">{showStdin ? 'hide' : 'show'}</button>
+                  </div>
+                  {showStdin && (
+                    <textarea value={stdin} onChange={e => setStdin(e.target.value)} rows={3} placeholder="Program input..." className="w-full glass-panel px-3 py-2 text-[11px] font-mono text-white placeholder:text-neutral-700 outline-none resize-none rounded-xl" />
+                  )}
+                </div>
+                <button onClick={handleRun} disabled={executing} className="flex items-center justify-center gap-2 w-full py-2 bg-accent text-white rounded-xl text-xs font-bold hover:bg-accent-secondary transition-colors disabled:opacity-50">
+                  {executing ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                  {executing ? 'Running...' : 'Run Code'}
+                </button>
+                {execResult ? (
+                  <div className="space-y-3 mt-1">
+                    <div className="flex items-center gap-2 text-[9px] font-mono text-neutral-500 uppercase tracking-widest">
+                      <span>Exit: <span className={execResult.run?.code === 0 ? 'text-accent' : 'text-red-400'}>{execResult.run?.code ?? '—'}</span></span>
+                      {execResult.run?.cpu_time !== undefined && <span>CPU: {execResult.run.cpu_time}ms</span>}
+                    </div>
+                    {execResult.run?.stdout && (
+                      <div>
+                        <span className="text-[9px] font-mono text-neutral-600 uppercase block mb-1">Stdout</span>
+                        <pre className="bg-black/40 border border-white/[0.05] rounded-xl p-3 text-[11px] font-mono text-accent-tertiary whitespace-pre-wrap overflow-x-auto max-h-48">{execResult.run.stdout}</pre>
+                      </div>
+                    )}
+                    {execResult.run?.stderr && (
+                      <div>
+                        <span className="text-[9px] font-mono text-red-500/60 uppercase block mb-1">Stderr</span>
+                        <pre className="bg-red-950/20 border border-red-500/10 rounded-xl p-3 text-[11px] font-mono text-red-300 whitespace-pre-wrap overflow-x-auto max-h-32">{execResult.run.stderr}</pre>
+                      </div>
+                    )}
+                    {execResult.compile?.stderr && (
+                      <div>
+                        <span className="text-[9px] font-mono text-yellow-500/60 uppercase block mb-1">Compile Error</span>
+                        <pre className="bg-yellow-950/20 border border-yellow-500/10 rounded-xl p-3 text-[11px] font-mono text-yellow-300 whitespace-pre-wrap overflow-x-auto max-h-32">{execResult.compile.stderr}</pre>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center mt-16 text-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl glass-panel flex items-center justify-center text-neutral-600">
+                      <Play size={18} />
+                    </div>
+                    <p className="text-[11px] text-neutral-600">Run your code to see output here</p>
+                  </div>
+                )}
+              </div>
+            ) : rightTab === 'chat' ? (
               <div className="flex-1 flex flex-col gap-3">
                 {messages.map((m, i) => (
                   <div key={i} className={`flex flex-col ${m.mine ? 'items-end' : 'items-start'}`}>
@@ -620,14 +988,14 @@ function SessionInner({ socket }: { socket: Socket | null }) {
 
 export default function SessionView() {
   const [socket, setSocket] = useState<Socket | null>(null);
-  const { token } = useStore();
+  const { token, user } = useStore();
 
   useEffect(() => {
     if (!token) return;
-    const s = io(API_BASE, { auth: { token }, transports: ['websocket', 'polling'] });
+    const s = io(API_BASE, { auth: { token, userName: (user as any)?.name || 'Anonymous' }, transports: ['websocket', 'polling'] });
     setSocket(s);
     return () => { s.disconnect(); };
-  }, [token]);
+  }, [token, user]);
 
   return (
     <MediaProvider socket={socket}>

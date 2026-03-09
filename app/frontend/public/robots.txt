@@ -38,4 +38,4 @@ Disallow: /org/
 # Disallow API
 Disallow: /api/
 
-Sitemap: https://netsculpt.io/sitemap.xml
+Sitemap: https://standor.io/sitemap.xml

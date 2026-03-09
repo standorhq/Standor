@@ -496,6 +496,15 @@ export const orgsApi = {
 
 export const analyticsApi = {
   getTeam: (days = 30) => api.get(`/analytics/team?days=${days}`).then(r => r.data),
+  exportCsv: async () => {
+    const res = await api.get('/sessions/export', { responseType: 'blob' });
+    const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'standor-sessions.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // ── Interview Rooms ───────────────────────────────────────────────────────────
@@ -503,7 +512,7 @@ export const analyticsApi = {
 export interface AIAnalysis {
   timeComplexity: string;
   spaceComplexity: string;
-  correctness: number;
+  correctness: string;
   bugs: string[];
   suggestions: string[];
   testCases: string[];
@@ -531,7 +540,7 @@ export interface InterviewRoom {
 }
 
 export interface ExecutionResult {
-  run: { stdout: string; stderr: string; code: number; signal: string | null };
+  run: { stdout: string; stderr: string; code: number; signal: string | null; cpu_time?: number; memory?: number };
   compile?: { stdout: string; stderr: string; code: number };
   language: string;
   version: string;
@@ -565,6 +574,47 @@ export const codeExecutionApi = {
     api.get('/execution/languages').then(r => r.data),
   execute: (data: { language: string; code: string; stdin?: string }): Promise<ExecutionResult> =>
     api.post('/execution/execute', data).then(r => r.data),
+};
+
+export const replayApi = {
+  get: (roomId: string) => api.get(`/replay/${roomId}`).then(r => r.data),
+};
+
+export interface ProblemDetail {
+  id: string;
+  title: string;
+  difficulty: 'EASY' | 'MEDIUM' | 'HARD';
+  category: string;
+  tags: string[];
+  description: string;
+  examples: { input: string; output: string; explanation?: string }[];
+  starterCode: Record<string, string>;
+  testCases: { input: string; expected: string }[];
+}
+
+export interface TestCaseResult {
+  index: number;
+  passed: boolean;
+  hidden: boolean;
+  input: string | null;
+  expected: string | null;
+  actual: string;
+  stderr: string | null;
+}
+
+export interface RunTestsResult {
+  passed: number;
+  total: number;
+  results: TestCaseResult[];
+}
+
+export const problemsApi = {
+  getBySlug: (title: string): Promise<ProblemDetail> =>
+    api.get(`/problems/${encodeURIComponent(title)}`).then(r => r.data),
+  runTests: (title: string, data: { language: string; code: string }): Promise<RunTestsResult> =>
+    api.post(`/problems/${encodeURIComponent(title)}/run`, data).then(r => r.data),
+  list: (params?: { q?: string; difficulty?: string; category?: string }): Promise<ProblemDetail[]> =>
+    api.get('/problems', { params }).then(r => r.data),
 };
 
 export default api;

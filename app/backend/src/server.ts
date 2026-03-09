@@ -23,6 +23,7 @@ import { usersRouter } from './routes/users.js'
 import { reportsRouter as analysisRouter } from './routes/analysis.js'
 import { codeRouter as executionRouter } from './routes/execution.js'
 import adminRouter from './routes/admin.js'
+import { replayRouter } from './routes/replay.js'
 import InterviewRoom from './models/InterviewRoom.js'
 
 const app = express()
@@ -53,6 +54,7 @@ app.use('/api/analysis', analysisRouter)
 app.use('/api/reports', analysisRouter)   // alias — frontend calls /api/reports/:roomId
 app.use('/api/execution', executionRouter)
 app.use('/api/admin', adminRouter)
+app.use('/api/replay', replayRouter)
 
 // Socket.IO
 initSocket(httpServer)

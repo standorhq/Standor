@@ -75,6 +75,7 @@ const Webhooks = lazy(() => import('./pages/Webhooks'));
 const Admin = lazy(() => import('./pages/Admin'));
 const DpiTools = lazy(() => import('./pages/DpiTools'));
 const Problems = lazy(() => import('./pages/Problems'));
+const Replay = lazy(() => import('./pages/Replay'));
 
 // ───── Apply accessibility on load ─────
 initAccessibility();
@@ -183,6 +184,7 @@ function AppContent() {
               <Route path="/problems" element={<ProtectedRoute><Problems /></ProtectedRoute>} />
               <Route path="/session" element={<ProtectedRoute><SessionView /></ProtectedRoute>} />
               <Route path="/session/:id" element={<ProtectedRoute><SessionView /></ProtectedRoute>} />
+              <Route path="/replay/:id" element={<ProtectedRoute><Replay /></ProtectedRoute>} />
               <Route path="/upload" element={<ProtectedRoute><Upload /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
               <Route path="/team-rooms" element={<ProtectedRoute><TeamRoom /></ProtectedRoute>} />

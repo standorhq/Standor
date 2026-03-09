@@ -11,6 +11,7 @@ interface MediaContextType {
     toggleVideo: () => void;
     joinMedia: (roomId: string, userId: string, userName: string) => void;
     leaveMedia: () => void;
+    getPeerConnections: () => Map<string, RTCPeerConnection>;
 }
 
 const MediaContext = createContext<MediaContextType | null>(null);
@@ -213,7 +214,8 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
             toggleAudio,
             toggleVideo,
             joinMedia,
-            leaveMedia
+            leaveMedia,
+            getPeerConnections: () => peerConnections.current,
         }}>
             {children}
         </MediaContext.Provider>

@@ -18,6 +18,7 @@ import {
   BarChart3,
   Activity,
   X,
+  RotateCcw,
 } from 'lucide-react';
 import { CardSkeleton, TableSkeleton } from '../components/Skeletons';
 import {
@@ -398,6 +399,15 @@ export default function Dashboard() {
                   >
                     <ArrowRight size={14} />
                   </button>
+                  {room.status === 'COMPLETED' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/replay/${room.roomId}`); }}
+                      className="flex justify-center p-2 rounded-lg hover:bg-white/[0.06] text-neutral-500 hover:text-accent transition-colors"
+                      title="Replay session"
+                    >
+                      <RotateCcw size={14} />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); handleExport(room); }}
                     disabled={exportingId === room.roomId}

@@ -37,6 +37,42 @@ sessionRouter.post('/', async (req, res) => {
     }
 })
 
+// GET /api/rooms/export?format=csv — download CSV of all sessions
+sessionRouter.get('/export', async (req, res) => {
+    const authReq = req as AuthRequest
+    const userFilter = { $or: [{ hostId: authReq.userId }, { participantId: authReq.userId }] }
+    try {
+        const rooms = await InterviewRoom.find(userFilter).sort({ startedAt: -1 }).limit(1000)
+
+        const header = ['Room ID', 'Problem', 'Difficulty', 'Status', 'Started At', 'Ended At', 'Duration (min)', 'AI Score', 'Time Complexity', 'Space Complexity'].join(',')
+        const rows = rooms.map(r => {
+            const start = r.startedAt ? new Date(r.startedAt).getTime() : 0
+            const end = r.endedAt ? new Date(r.endedAt).getTime() : 0
+            const durationMin = start && end ? ((end - start) / 60000).toFixed(1) : ''
+            const lastAnalysis = r.analyses?.[r.analyses.length - 1]
+            return [
+                r.roomId,
+                `"${(r.problem || '').replace(/"/g, '""')}"`,
+                r.difficulty,
+                r.status,
+                r.startedAt ? new Date(r.startedAt).toISOString() : '',
+                r.endedAt ? new Date(r.endedAt).toISOString() : '',
+                durationMin,
+                lastAnalysis?.overallScore ?? '',
+                `"${lastAnalysis?.timeComplexity ?? ''}"`,
+                `"${lastAnalysis?.spaceComplexity ?? ''}"`,
+            ].join(',')
+        })
+
+        const csv = [header, ...rows].join('\n')
+        res.setHeader('Content-Type', 'text/csv')
+        res.setHeader('Content-Disposition', 'attachment; filename="standor-sessions.csv"')
+        res.send(csv)
+    } catch {
+        res.status(500).json({ error: 'Export failed' })
+    }
+})
+
 // GET /api/rooms/my-sessions
 sessionRouter.get('/my-sessions', async (req, res) => {
     const authReq = req as AuthRequest

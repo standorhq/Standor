@@ -108,6 +108,51 @@ export class AIService {
             return stubAnalysis(code, language)
         }
     }
+
+    static async generateHint(code: string, language: string, problem: string): Promise<string> {
+        const prompt = `You are a technical interviewer. The candidate is solving: "${problem}".
+Their current ${language} code:
+\`\`\`${language}
+${code}
+\`\`\`
+Provide ONE brief, non-spoiler hint (1-2 sentences max) that nudges the candidate in the right direction without revealing the solution.
+Respond ONLY with the hint text — no markdown, no preamble.`
+
+        const apiKey = DEFAULT_PROVIDER === 'openrouter' ? env.OPENROUTER_API_KEY : env.DEEPSEEK_API_KEY
+        if (!apiKey && DEFAULT_PROVIDER !== 'ollama') {
+            return 'Think about the time complexity of your current approach and whether a different data structure could help.'
+        }
+        try {
+            let hint = ''
+            if (DEFAULT_PROVIDER === 'ollama') {
+                const { data } = await axios.post(`${OLLAMA_BASE}/generate`, {
+                    model: MODEL_MAPPING.ollama,
+                    prompt,
+                    stream: false,
+                })
+                hint = data.response?.trim() ?? ''
+            } else {
+                const endpoint = DEFAULT_PROVIDER === 'deepseek' ? DEEPSEEK_BASE : OPENROUTER_BASE
+                const { data } = await axios.post(
+                    `${endpoint}/chat/completions`,
+                    {
+                        model: MODEL_MAPPING[DEFAULT_PROVIDER],
+                        messages: [{ role: 'user', content: prompt }],
+                        temperature: 0.4,
+                        max_tokens: 120,
+                    },
+                    {
+                        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+                        timeout: 20_000,
+                    }
+                )
+                hint = data?.choices?.[0]?.message?.content?.trim() ?? ''
+            }
+            return hint || 'Consider the edge cases in your algorithm and how the data flows through each step.'
+        } catch {
+            return 'Think carefully about your loop invariants and base cases.'
+        }
+    }
 }
 
 function stubAnalysis(code: string, language: string) {

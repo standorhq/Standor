@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io'
 import InterviewRoom from '../models/InterviewRoom.js'
+import EventLog from '../models/EventLog.js'
 
 export const registerChatHandlers = (io: Server, socket: Socket) => {
     const userId = (socket as any).userId
@@ -21,6 +22,12 @@ export const registerChatHandlers = (io: Server, socket: Socket) => {
                         }
                     }
                 }
+            )
+            // Append to EventLog for replay
+            await EventLog.findOneAndUpdate(
+                { roomId: data.roomId },
+                { $push: { events: { type: 'chat', payload: { sender: data.sender, text: sanitized }, timestamp: new Date(data.ts), actorId: userId } } },
+                { upsert: true }
             )
         } catch (e) {
             console.error('[Socket/Chat]', e)
