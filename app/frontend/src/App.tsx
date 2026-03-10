@@ -65,6 +65,7 @@ const SharedSession = lazy(() => import('./pages/SharedSession'));
 
 // App pages (protected)
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const CodePairPage = lazy(() => import('./features/codepair/CodePairPage'));
 const CreateSession = lazy(() => import('./pages/CreateSession'));
 const SessionView = lazy(() => import('./pages/SessionView'));
 const Upload = lazy(() => import('./pages/Upload'));
@@ -185,6 +186,7 @@ function AppContent() {
               <Route path="/tools/dpi" element={<ProtectedRoute><DpiTools /></ProtectedRoute>} />
               <Route path="/tools/*" element={<Navigate to="/tools/dpi" replace />} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/codepair/:roomId" element={<ProtectedRoute><CodePairPage /></ProtectedRoute>} />
               <Route path="/create-session" element={<ProtectedRoute><CreateSession /></ProtectedRoute>} />
               <Route path="/problems" element={<ProtectedRoute><Problems /></ProtectedRoute>} />
               <Route path="/session" element={<ProtectedRoute><SessionView /></ProtectedRoute>} />

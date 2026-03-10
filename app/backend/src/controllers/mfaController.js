@@ -1,4 +1,5 @@
-import { authenticator } from "otplib";
+import * as otplib from "otplib";
+const { authenticator } = otplib;
 import qrcode from "qrcode";
 import crypto from "crypto";
 import User from "../models/User.js";

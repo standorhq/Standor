@@ -51,12 +51,17 @@ if (ENV.NODE_ENV === "production") {
   });
 }
 
+import { setupCodePairSocket } from "./features/codepair/socketHandler.js";
+
 const startServer = async () => {
   try {
     await connectDB();
 
     // Initialize Socket.IO
-    initSocket(httpServer);
+    const io = initSocket(httpServer);
+    
+    // Initialize CodePair Socket
+    setupCodePairSocket(io);
 
     httpServer.listen(ENV.PORT, () => console.log("Server is running on port:", ENV.PORT));
   } catch (error) {

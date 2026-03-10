@@ -231,6 +231,17 @@ export default function Dashboard() {
               <TrendingUp size={15} />
             </button>
             <button
+              onClick={() => {
+                const randomId = Math.random().toString(36).substring(7) + '-' + Math.random().toString(36).substring(7);
+                navigate(`/codepair/${randomId}`);
+              }}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-neutral-800 text-white rounded-lg font-semibold text-sm hover:bg-neutral-700 transition-colors w-full sm:w-auto"
+              title="Start a quick collaborative coding session"
+            >
+              <Users size={16} />
+              CodePair Session
+            </button>
+            <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-white rounded-lg font-semibold text-sm hover:bg-accent-secondary transition-colors w-full sm:w-auto shadow-[0_0_20px_rgba(19,127,236,0.2)]"
               data-testid="create-session-btn"
