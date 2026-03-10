@@ -27,10 +27,10 @@ export default function GlobalSearch() {
   }, [isOpen]);
 
   const results = query.trim() ? [
-    ...sessions.filter(s => (s.title || '').toLowerCase().includes(query.toLowerCase())).map(s => ({
+    ...(sessions || []).filter(s => (s.title || '').toLowerCase().includes(query.toLowerCase())).map(s => ({
       type: 'Session', title: s.title, action: () => { navigate(`/session/${s.id}`); setIsOpen(false); }
     })),
-    ...packets.filter(p =>
+    ...(packets || []).filter(p =>
       p.protocol.toLowerCase().includes(query.toLowerCase()) ||
       p.src.includes(query) || p.dst.includes(query)
     ).slice(0, 5).map(p => ({

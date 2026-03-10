@@ -12,7 +12,9 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@simplewebauthn/server": "^13.2.3",
     "@stream-io/node-sdk": "^0.7.12",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
@@ -20,10 +22,19 @@
     "inngest": "^3.44.3",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^8.19.1",
+    "nodemailer": "^8.0.2",
+    "otplib": "^13.3.0",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.3",
-    "stream-chat": "^9.24.0"
+    "stream-chat": "^9.24.0",
+    "ua-parser-js": "^2.0.9"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/nodemailer": "^7.0.11",
+    "@types/qrcode": "^1.5.6",
+    "@types/ua-parser-js": "^0.7.39",
     "nodemon": "^3.1.10"
   }
 }

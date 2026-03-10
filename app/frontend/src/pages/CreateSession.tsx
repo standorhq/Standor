@@ -64,7 +64,7 @@ export default function CreateSession() {
     if (initialDifficulty) setDifficulty(initialDifficulty);
   }, [initialProblem, initialDifficulty]);
 
-  const filteredProblems = problems.filter(p =>
+  const filteredProblems = (Array.isArray(problems) ? problems : []).filter(p =>
     p.title.toLowerCase().includes(problemSearch.toLowerCase()) ||
     p.category.toLowerCase().includes(problemSearch.toLowerCase()) ||
     p.tags.some(t => t.toLowerCase().includes(problemSearch.toLowerCase()))

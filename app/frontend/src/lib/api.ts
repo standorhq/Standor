@@ -1,7 +1,8 @@
 import axios from 'axios';
 import useStore from '../store/useStore';
 
-const API_BASE = (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:4000';
+const envUrl = import.meta.env?.VITE_BACKEND_URL;
+const API_BASE = (envUrl && envUrl !== 'undefined') ? envUrl : 'http://localhost:4000';
 
 const api = axios.create({
     baseURL: `${API_BASE}/api`,

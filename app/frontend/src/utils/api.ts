@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { Session, Packet, Annotation, User } from '../store/useStore';
 
-const API = import.meta.env.VITE_BACKEND_URL as string;
+const envUrl = import.meta.env.VITE_BACKEND_URL;
+const API = (envUrl && envUrl !== 'undefined') ? (envUrl as string) : 'http://localhost:4000';
 
 const api = axios.create({
   baseURL: `${API}/api`,
@@ -141,6 +142,8 @@ export const authApi = {
     api.delete(`/auth/providers/${provider}`).then(r => r.data),
   updateGovernance: (data: { storeFullPayload?: boolean; analyticsConsent?: boolean }) =>
     api.patch('/auth/governance', data).then(r => r.data),
+  updateProfile: (data: { name?: string; email?: string }) =>
+    api.patch('/auth/me', data).then(r => r.data),
 };
 
 export const sessionsApi = {

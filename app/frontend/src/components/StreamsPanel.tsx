@@ -41,12 +41,12 @@ export default function StreamsPanel({ sessionId }: Props) {
   }, [sessionId]);
 
   const filtered = filter
-    ? streams.filter(s =>
+    ? (streams || []).filter(s =>
         s.src.includes(filter) || s.dst.includes(filter) ||
         s.protocol.toLowerCase().includes(filter.toLowerCase()) ||
         s.httpSummary?.includes(filter) || s.dnsSummary?.includes(filter)
       )
-    : streams;
+    : (streams || []);
 
   if (loading) {
     return (

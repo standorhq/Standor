@@ -435,9 +435,9 @@ export default function Problems() {
 
   // ── Derived state ────────────────────────────────────────────────────────────
 
-  const categories = [...new Set(problems.map(p => p.category).filter(Boolean))].sort();
+  const categories = [...new Set((Array.isArray(problems) ? problems : []).map(p => p.category).filter(Boolean))].sort();
 
-  const filtered = problems.filter(p => {
+  const filtered = (Array.isArray(problems) ? problems : []).filter(p => {
     const q = search.toLowerCase();
     const matchSearch =
       !q ||

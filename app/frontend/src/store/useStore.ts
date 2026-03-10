@@ -10,6 +10,10 @@ export interface User {
   emailVerified?: boolean;
   mfaEnabled?: boolean;
   providers?: Array<{ provider: string; providerId?: string }>;
+  dataGovernance?: {
+    storeFullPayload?: boolean;
+    analyticsConsent?: boolean;
+  };
 }
 
 export interface Session {
@@ -153,21 +157,21 @@ const useStore = create<StoreState>((set, get) => ({
 
   sessions: [],
   currentSession: null,
-  setSessions: (sessions) => set({ sessions }),
+  setSessions: (sessions) => set({ sessions: sessions || [] }),
   setCurrentSession: (session) => set({ currentSession: session }),
   addSession: (session) => set((s) => ({ sessions: [session, ...s.sessions] })),
   deleteSession: (id) => set((s) => ({ sessions: s.sessions.filter(x => x.id !== id) })),
 
   packets: [],
   selectedPacket: null,
-  setPackets: (packets) => set({ packets }),
+  setPackets: (packets) => set({ packets: packets || [] }),
   setSelectedPacket: (packet) => set({ selectedPacket: packet }),
 
   selectedLayer: null,
   setSelectedLayer: (layer) => set({ selectedLayer: layer }),
 
   annotations: [],
-  setAnnotations: (annotations) => set({ annotations }),
+  setAnnotations: (annotations) => set({ annotations: annotations || [] }),
   addAnnotation: (annotation) => set((s) => ({ annotations: [...s.annotations, annotation] })),
 
   collaborators: [],

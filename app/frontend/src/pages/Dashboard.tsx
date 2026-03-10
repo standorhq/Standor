@@ -191,7 +191,7 @@ export default function Dashboard() {
     }
   };
 
-  const filtered = rooms.filter(r =>
+  const filtered = (rooms || []).filter(r =>
     r.problem.toLowerCase().includes(search.toLowerCase()) ||
     r.language.toLowerCase().includes(search.toLowerCase()) ||
     r.difficulty.toLowerCase().includes(search.toLowerCase())
@@ -248,8 +248,8 @@ export default function Dashboard() {
             { label: 'Total Interviews', value: stats.total, icon: BarChart3 },
             { label: 'Active Now', value: stats.active, icon: Activity, color: 'text-accent' },
             { label: 'Completed', value: stats.completed, icon: CheckCircle },
-            { label: 'Avg Score', value: `${stats.avgScore.toFixed(1)}/10`, icon: TrendingUp },
-            { label: 'Pass Rate', value: `${stats.passRate.toFixed(0)}%`, icon: TrendingUp, color: 'text-accent-tertiary' },
+            { label: 'Avg Score', value: `${(stats.avgScore || 0).toFixed(1)}/10`, icon: TrendingUp },
+            { label: 'Pass Rate', value: `${(stats.passRate || 0).toFixed(0)}%`, icon: TrendingUp, color: 'text-accent-tertiary' },
             { label: 'Total Candidates', value: stats.withParticipant, icon: Users },
           ].map((stat, i) => (
             <div key={i} className="glass-panel p-3 sm:p-4 rounded-xl" data-testid={`stat-${i}`}>

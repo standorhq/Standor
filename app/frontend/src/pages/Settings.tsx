@@ -103,6 +103,11 @@ export default function Settings() {
   const [cpShowNew, setCpShowNew] = useState(false);
   const [cpLoading, setCpLoading] = useState(false);
 
+  // Profile Edit State
+  const [profileName, setProfileName] = useState(user?.name || '');
+  const [profileEmail, setProfileEmail] = useState(user?.email || '');
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+
   // Data governance — seed from user.dataGovernance if present, fall back to localStorage
   const [storeFullPayload, setStoreFullPayload] = useState(
     () => (user as any)?.dataGovernance?.storeFullPayload ?? localStorage.getItem('ns_full_payload') === 'true'
@@ -134,6 +139,28 @@ export default function Settings() {
       setOrgRetentionDays(o.retentionDays != null ? String(o.retentionDays) : '');
     }).catch(() => { }).finally(() => setOrgLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || '');
+      setProfileEmail(user.email || '');
+    }
+  }, [user]);
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (profileName === user?.name && profileEmail === user?.email) return;
+    setUpdatingProfile(true);
+    try {
+      const res = await authApi.updateProfile({ name: profileName, email: profileEmail });
+      useStore.setState({ user: res.user });
+      toast.success('Profile updated');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to update profile');
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
 
   const handleCreateOrg = async () => {
     if (orgName.trim().length < 2) { toast.error('Name must be at least 2 characters'); return; }
@@ -385,7 +412,11 @@ export default function Settings() {
       localStorage.setItem('ns_analytics', String(value));
     }
     try {
-      await authApi.updateGovernance({ [key]: value });
+      const updatedGov = await authApi.updateGovernance({ [key]: value });
+      const currentStore = useStore.getState();
+      if (currentStore.user) {
+        useStore.setState({ user: { ...currentStore.user, dataGovernance: updatedGov } });
+      }
     } catch {
       // non-fatal — localStorage already updated
     }
@@ -477,14 +508,14 @@ export default function Settings() {
         {/* Profile */}
         <section className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 sm:p-5 mb-5 sm:mb-6" data-testid="settings-profile">
           <h2 className="text-sm font-semibold text-white mb-4">Profile</h2>
-          <div className="space-y-4">
+          <form onSubmit={handleUpdateProfile} className="space-y-4">
             <div>
               <label className="block text-xs text-neutral-400 mb-1.5">Display Name</label>
               <input
                 type="text"
-                value={user?.name || ''}
-                readOnly
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3.5 py-2.5 text-sm text-neutral-400 outline-none cursor-not-allowed"
+                value={profileName}
+                onChange={e => setProfileName(e.target.value)}
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-ns-accent outline-none transition-colors"
                 data-testid="settings-name-input"
               />
             </div>
@@ -492,30 +523,41 @@ export default function Settings() {
               <label className="block text-xs text-neutral-400 mb-1.5">Email</label>
               <input
                 type="email"
-                value={user?.email || ''}
-                readOnly
-                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3.5 py-2.5 text-sm text-neutral-400 outline-none cursor-not-allowed"
+                value={profileEmail}
+                onChange={e => setProfileEmail(e.target.value)}
+                className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-ns-accent outline-none transition-colors"
                 data-testid="settings-email-input"
               />
             </div>
-            <div>
-              <label className="block text-xs text-neutral-400 mb-1.5">Email Status</label>
-              <div className="flex items-center gap-2">
-                {user?.emailVerified ? (
-                  <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-ns-success uppercase tracking-wider">
-                    <CheckCircle2 size={12} /> Verified
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => authApi.resendVerification(user?.email || '').then(() => toast.success('Verification link sent'))}
-                    className="text-[10px] font-bold text-ns-accent uppercase tracking-wider hover:underline"
-                  >
-                    Unverified — Resend Link
-                  </button>
-                )}
+            <div className="flex items-center justify-between pt-2">
+              <div>
+                <label className="block text-xs text-neutral-400 mb-1.5">Email Status</label>
+                <div className="flex items-center gap-2">
+                  {user?.emailVerified ? (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] font-bold text-ns-success uppercase tracking-wider">
+                      <CheckCircle2 size={12} /> Verified
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => authApi.resendVerification(user?.email || '').then(() => toast.success('Verification link sent'))}
+                      className="text-[10px] font-bold text-ns-accent uppercase tracking-wider hover:underline"
+                    >
+                      Unverified — Resend Link
+                    </button>
+                  )}
+                </div>
               </div>
+              <button
+                type="submit"
+                disabled={updatingProfile || (profileName === user?.name && profileEmail === user?.email)}
+                className="px-4 py-2 bg-white text-black rounded-lg text-xs font-bold hover:bg-neutral-200 transition-colors disabled:opacity-50 flex items-center gap-2"
+              >
+                {updatingProfile ? <Loader2 size={12} className="animate-spin" /> : null}
+                Save Profile
+              </button>
             </div>
-          </div>
+          </form>
         </section>
 
         {/* Account Linking */}
@@ -929,10 +971,10 @@ export default function Settings() {
             </form>
 
             <div className="space-y-2 pt-2">
-              {apiKeys.length === 0 ? (
+              {apiKeys?.length === 0 ? (
                 <p className="text-xs text-neutral-600 italic">No active API keys.</p>
               ) : (
-                apiKeys.map((key, i) => (
+                (Array.isArray(apiKeys) ? apiKeys : []).map((key, i) => (
                   <div key={i} className="flex flex-row items-center justify-between py-2 sm:py-2.5 border-b border-white/[0.04] last:border-none gap-2">
                     <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                       <div className="p-1.5 bg-white/5 rounded-md text-neutral-400 shrink-0">
@@ -984,31 +1026,33 @@ export default function Settings() {
             </div>
 
             <div className="space-y-2 pt-1">
-              {passkeys.length === 0 ? (
+              {passkeys?.length === 0 ? (
                 <p className="text-xs text-neutral-600 italic">No passkeys enrolled.</p>
-              ) : passkeys.map((pk) => (
-                <div key={pk.credentialId} className="flex items-center justify-between py-2 sm:py-2.5 border-b border-white/[0.04] last:border-none gap-2">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                    <div className="p-1.5 bg-white/5 rounded-md text-neutral-400 shrink-0">
-                      <Key size={12} className="sm:w-[14px] sm:h-[14px]" />
+              ) : (
+                (Array.isArray(passkeys) ? passkeys : []).map((pk) => (
+                  <div key={pk.credentialId} className="flex items-center justify-between py-2 sm:py-2.5 border-b border-white/[0.04] last:border-none gap-2">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                      <div className="p-1.5 bg-white/5 rounded-md text-neutral-400 shrink-0">
+                        <Key size={12} className="sm:w-[14px] sm:h-[14px]" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm text-neutral-200 font-medium truncate">{pk.name}</p>
+                        <p className="text-[9px] sm:text-[10px] text-neutral-600 uppercase truncate">
+                          {pk.deviceType === 'multiDevice' ? 'Synced passkey' : 'Device-bound'} · Added {new Date(pk.createdAt).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm text-neutral-200 font-medium truncate">{pk.name}</p>
-                      <p className="text-[9px] sm:text-[10px] text-neutral-600 uppercase truncate">
-                        {pk.deviceType === 'multiDevice' ? 'Synced passkey' : 'Device-bound'} · Added {new Date(pk.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
+                    <button
+                      onClick={() => handleRemovePasskey(pk.credentialId)}
+                      disabled={removingPasskey === pk.credentialId}
+                      className="p-1.5 text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
+                      title="Remove passkey"
+                    >
+                      {removingPasskey === pk.credentialId ? <Loader2 size={13} className="animate-spin sm:w-[14px] sm:h-[14px]" /> : <Trash2 size={13} className="sm:w-[14px] sm:h-[14px]" />}
+                    </button>
                   </div>
-                  <button
-                    onClick={() => handleRemovePasskey(pk.credentialId)}
-                    disabled={removingPasskey === pk.credentialId}
-                    className="p-1.5 text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
-                    title="Remove passkey"
-                  >
-                    {removingPasskey === pk.credentialId ? <Loader2 size={13} className="animate-spin sm:w-[14px] sm:h-[14px]" /> : <Trash2 size={13} className="sm:w-[14px] sm:h-[14px]" />}
-                  </button>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </section>
@@ -1079,24 +1123,24 @@ export default function Settings() {
                   <p className="text-[10px] text-neutral-600 font-mono mt-0.5 truncate">/{org.slug}</p>
                 </div>
                 <span className="text-[9px] font-bold text-ns-accent uppercase tracking-widest px-2 py-0.5 rounded-full bg-ns-accent/10 border border-ns-accent/20 shrink-0">
-                  {org.members.find(m => m.userId === user?.id)?.role ?? 'member'}
+                  {org?.members?.find(m => m.userId === user?.id)?.role ?? 'member'}
                 </span>
               </div>
 
               /* Members list */
               <div>
-                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2">Members ({org.members.length})</p>
+                <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2">Members ({org?.members?.length ?? 0})</p>
                 <div className="space-y-1">
-                  {org.members.map(m => (
+                  {(org?.members ?? []).map(m => (
                     <div key={m.userId} className="flex flex-row items-center justify-between py-2 border-b border-white/[0.04] last:border-none gap-2">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                       <div className="flex items-center gap-2 min-w-0 flex-1">
                         {m.role === 'owner' && <Crown size={12} className="text-yellow-500 shrink-0" />}
                         <div className="min-w-0 flex-1">
                           <p className="text-xs text-neutral-200 truncate">{m.name || m.email}</p>
                           <p className="text-[10px] text-neutral-600 truncate">{m.email} · {m.role}</p>
                         </div>
                       </div>
-                      {m.userId !== user?.id && ['owner', 'admin'].includes(org.members.find(x => x.userId === user?.id)?.role ?? '') && m.role !== 'owner' && (
+                      {m.userId !== user?.id && ['owner', 'admin'].includes(org?.members?.find(x => x.userId === user?.id)?.role ?? '') && m.role !== 'owner' && (
                         <button
                           onClick={() => handleRemoveOrgMember(m)}
                           disabled={orgActionLoading}
@@ -1111,11 +1155,11 @@ export default function Settings() {
                 </div>
               </div>
 
-              /* Pending invites */
-              {org.invites.length > 0 && (
+              {/* Pending invites */}
+              {(org?.invites?.length ?? 0) > 0 && (
                 <div>
-                  <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2">Pending Invites ({org.invites.length})</p>
-                  {org.invites.map(inv => (
+                  <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2">Pending Invites ({org?.invites?.length ?? 0})</p>
+                  {(org?.invites ?? []).map(inv => (
                     <div key={inv.id} className="flex items-center gap-2 py-1.5 text-xs text-neutral-500 min-w-0">
                       <Mail size={12} className="shrink-0" />
                       <span className="truncate">{inv.email}</span>
@@ -1126,7 +1170,7 @@ export default function Settings() {
               )}
 
               /* Invite form (owner/admin only) */
-              {['owner', 'admin'].includes(org.members.find(m => m.userId === user?.id)?.role ?? '') && (
+              {['owner', 'admin'].includes(org?.members?.find(m => m.userId === user?.id)?.role ?? '') && (
                 <div className="pt-3 border-t border-white/[0.04]">
                   <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-3">Invite Member</p>
                   <div className="flex flex-col sm:flex-row gap-2">
@@ -1159,7 +1203,7 @@ export default function Settings() {
               )}
 
               /* Data Retention */
-              {(org.ownerId === user?.id || org.members.find(m => m.userId === user?.id)?.role === 'admin') && (
+              {(org.ownerId === user?.id || org?.members?.find(m => m.userId === user?.id)?.role === 'admin') && (
                 <div className="pt-3 border-t border-white/[0.04]">
                   <p className="text-xs font-semibold text-white mb-1">Data Retention</p>
                   <p className="text-[11px] text-neutral-500 mb-3">
@@ -1223,7 +1267,7 @@ export default function Settings() {
               <h2 className="text-sm font-semibold text-white truncate">Active Sessions</h2>
               <p className="text-[11px] sm:text-xs text-neutral-500 mt-0.5 truncate">Devices currently signed in to your account.</p>
             </div>
-            {activeSessions.length > 1 && (
+            {activeSessions?.length > 1 && (
               <button
                 onClick={handleLogoutEverywhere}
                 className="text-[10px] font-bold text-red-400 uppercase tracking-wider hover:text-red-300 transition-colors shrink-0"
@@ -1233,34 +1277,36 @@ export default function Settings() {
             )}
           </div>
           <div className="space-y-2">
-            {activeSessions.length === 0 ? (
+            {activeSessions?.length === 0 ? (
               <p className="text-xs text-neutral-600 italic">No active sessions found.</p>
-            ) : activeSessions.map((s, i) => (
-              <div key={i} className="flex flex-row items-center justify-between py-2 sm:py-2.5 border-b border-white/[0.04] last:border-none gap-2">
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <div className={`w-2 h-2 rounded-full shrink-0 ${s.isCurrent ? 'bg-green-400' : 'bg-neutral-600'}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm text-neutral-200 font-medium flex items-center gap-2 truncate">
-                      <span className="truncate">{formatUA(s.userAgent)}</span>
-                      {s.isCurrent && <span className="text-[9px] font-bold text-green-400 uppercase tracking-wider shrink-0">Current</span>}
-                    </p>
-                    <p className="text-[9px] sm:text-[10px] text-neutral-600 font-mono truncate">
-                      {s.ip || 'Unknown IP'} · Last active {new Date(s.lastUsed).toLocaleString()}
-                    </p>
+            ) : (
+              (Array.isArray(activeSessions) ? activeSessions : []).map((s, i) => (
+                <div key={i} className="flex flex-row items-center justify-between py-2 sm:py-2.5 border-b border-white/[0.04] last:border-none gap-2">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${s.isCurrent ? 'bg-green-400' : 'bg-neutral-600'}`} />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm text-neutral-200 font-medium flex items-center gap-2 truncate">
+                        <span className="truncate">{formatUA(s.userAgent)}</span>
+                        {s.isCurrent && <span className="text-[9px] font-bold text-green-400 uppercase tracking-wider shrink-0">Current</span>}
+                      </p>
+                      <p className="text-[9px] sm:text-[10px] text-neutral-600 font-mono truncate">
+                        {s.ip || 'Unknown IP'} · Last active {new Date(s.lastUsed).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
+                  {!s.isCurrent && (
+                    <button
+                      onClick={() => handleRevokeSession(s.createdAt)}
+                      disabled={revokingSession === s.createdAt}
+                      className="p-1.5 text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
+                      title="Revoke this session"
+                    >
+                      {revokingSession === s.createdAt ? <Loader2 size={13} className="animate-spin sm:w-[14px] sm:h-[14px]" /> : <Trash2 size={13} className="sm:w-[14px] sm:h-[14px]" />}
+                    </button>
+                  )}
                 </div>
-                {!s.isCurrent && (
-                  <button
-                    onClick={() => handleRevokeSession(s.createdAt)}
-                    disabled={revokingSession === s.createdAt}
-                    className="p-1.5 text-neutral-600 hover:text-red-400 transition-colors disabled:opacity-50 shrink-0"
-                    title="Revoke this session"
-                  >
-                    {revokingSession === s.createdAt ? <Loader2 size={13} className="animate-spin sm:w-[14px] sm:h-[14px]" /> : <Trash2 size={13} className="sm:w-[14px] sm:h-[14px]" />}
-                  </button>
-                )}
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </section>
 
@@ -1268,10 +1314,10 @@ export default function Settings() {
         <section className="rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 sm:p-5 mb-5 sm:mb-6">
           <h2 className="text-sm font-semibold text-white mb-4">Security Audit Log</h2>
           <div className="space-y-3">
-            {auditLogs.length === 0 ? (
+            {auditLogs?.length === 0 ? (
               <p className="text-xs text-neutral-600 italic">No recent activity detected.</p>
             ) : (
-              auditLogs.slice(0, 5).map((log, i) => (
+              (Array.isArray(auditLogs) ? auditLogs : []).slice(0, 5).map((log, i) => (
                 <div key={i} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-none gap-2">
                   <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
                     <div className={`w-2 h-2 rounded-full shrink-0 ${log.status === 'success' ? 'bg-ns-success' : 'bg-ns-error'}`} />
@@ -1286,7 +1332,7 @@ export default function Settings() {
                 </div>
               ))
             )}
-            {auditLogs.length > 5 && (
+            {auditLogs?.length > 5 && (
               <p className="text-[10px] text-neutral-600 text-center pt-2">Showing last 5 events</p>
             )}
           </div>

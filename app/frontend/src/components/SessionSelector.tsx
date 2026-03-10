@@ -19,8 +19,8 @@ export default function SessionSelector() {
     }
   }, [sessions.length, setSessions]);
 
-  const activeSession = sessions[0];
-  const filteredSessions = sessions.filter(s =>
+  const activeSession = (sessions || [])[0];
+  const filteredSessions = (sessions || []).filter(s =>
     (s.title || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 

@@ -141,9 +141,9 @@ export default function Replay() {
     idxRef.current = -1;
   };
 
-  const progress = data?.events.length ? (currentIdx + 1) / data.events.length : 0;
-  const totalEvents = data?.events.length ?? 0;
-  const chatEvents = data?.events.filter(e => e.type === 'chat') ?? [];
+  const progress = data?.events?.length ? (currentIdx + 1) / data.events.length : 0;
+  const totalEvents = data?.events?.length ?? 0;
+  const chatEvents = (data?.events || []).filter(e => e.type === 'chat');
 
   if (loading) return (
     <div className="min-h-screen bg-bg-900 flex items-center justify-center">

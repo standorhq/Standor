@@ -11,6 +11,9 @@ import authRoutes from "./routes/authRoutes.js";
 import chatRoutes from "./routes/chatRoutes.js";
 import sessionRoutes from "./routes/sessionRoute.js";
 import meetingRoutes from "./routes/meetingRoutes.js";
+import webauthnRoutes from "./routes/webauthnRoutes.js";
+import orgRoutes from "./routes/orgRoutes.js";
+import ssoRoutes from "./routes/ssoRoutes.js";
 
 import { createServer } from "http";
 import { initSocket } from "./lib/socket.js";
@@ -35,6 +38,9 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/sessions", sessionRoutes);
 app.use("/api/rooms", sessionRoutes);
 app.use("/api/meetings", meetingRoutes);
+app.use("/api/webauthn", webauthnRoutes);
+app.use("/api/orgs", orgRoutes);
+app.use("/api/sso", ssoRoutes);
 
 // make our app ready for deployment
 if (ENV.NODE_ENV === "production") {

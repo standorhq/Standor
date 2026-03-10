@@ -311,8 +311,8 @@ export default function TeamRoom() {
     });
   }, []);
 
-  const activeRooms = rooms.filter((r) => r.status === 'ACTIVE');
-  const completedRooms = rooms.filter((r) => r.status === 'COMPLETED');
+  const activeRooms = (rooms || []).filter((r) => r.status === 'ACTIVE');
+  const completedRooms = (rooms || []).filter((r) => r.status === 'COMPLETED');
   const isEmpty = !loading && rooms.length === 0;
 
   return (
