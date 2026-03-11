@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
+import StandorLogo from '../components/StandorLogo';
 
 /**
  * Receives the invite link from email (/org/accept-invite?status=...&org=...)
@@ -32,9 +33,7 @@ export default function OrgAcceptInvite() {
   if (token && email && !status) {
     return (
       <div className="min-h-screen bg-ns-bg-900 flex flex-col items-center justify-center gap-4">
-        <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center mb-2">
-          <span className="text-black font-bold text-xs">NS</span>
-        </div>
+        <StandorLogo size={36} className="mb-2" />
         <Loader2 size={20} className="animate-spin text-neutral-400" />
         <p className="text-sm text-neutral-500">Accepting invitation…</p>
       </div>

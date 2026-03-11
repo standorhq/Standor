@@ -37,6 +37,23 @@ api.interceptors.response.use(
         const originalRequest = error.config;
 
         if (error.response?.status === 401 && !originalRequest._retry) {
+            // Check if token is expired
+            const store = useStore.getState();
+            const isExpired = store.checkTokenExpiration();
+            
+            if (isExpired) {
+                // Token expired - logout immediately
+                import('sonner').then(({ toast }) => {
+                    toast.error('Session Expired', {
+                        description: 'Your session has expired. Please log in again.',
+                    });
+                });
+                
+                store.logout();
+                window.location.href = '/login';
+                return Promise.reject(error);
+            }
+            
             if (isRefreshing) {
                 return new Promise((resolve, reject) => {
                     failedQueue.push({ resolve, reject });
@@ -62,6 +79,13 @@ api.interceptors.response.use(
                 return api(originalRequest);
             } catch (refreshError) {
                 processQueue(refreshError, null);
+                
+                import('sonner').then(({ toast }) => {
+                    toast.error('Session Expired', {
+                        description: 'Your session has expired. Please log in again.',
+                    });
+                });
+                
                 useStore.getState().logout();
                 window.location.href = '/login';
                 return Promise.reject(refreshError);

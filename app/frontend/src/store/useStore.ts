@@ -75,9 +75,14 @@ interface StoreState {
   user: User | null;
   token: string | null;
   authLoading: boolean;
+  tokenExpiration: number | null;
+  sessionCheckInterval: ReturnType<typeof setInterval> | null;
   setAuth: (user: User, token: string) => void;
   logout: () => void;
   setAuthLoading: (v: boolean) => void;
+  checkTokenExpiration: () => boolean;
+  startSessionMonitor: () => void;
+  stopSessionMonitor: () => void;
 
   theme: 'dark' | 'light';
   toggleTheme: () => void;
@@ -126,17 +131,97 @@ interface StoreState {
 }
 
 const useStore = create<StoreState>((set, get) => ({
-  user: (() => { try { return JSON.parse(localStorage.getItem('standor_user') || 'null'); } catch { return null; } })(),
-  token: localStorage.getItem('standor_token') || null,
+  user: (() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('standor_user') || 'null');
+      const token = localStorage.getItem('standor_token');
+      const expiration = localStorage.getItem('standor_token_expiration');
+
+      if (user && token && expiration) {
+        const exp = parseInt(expiration, 10);
+        if (Date.now() >= exp) {
+          localStorage.removeItem('standor_user');
+          localStorage.removeItem('standor_token');
+          localStorage.removeItem('standor_token_expiration');
+          return null;
+        }
+        return user;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  })(),
+  token: (() => {
+    const token = localStorage.getItem('standor_token');
+    const expiration = localStorage.getItem('standor_token_expiration');
+    if (token && expiration) {
+      const exp = parseInt(expiration, 10);
+      if (Date.now() >= exp) {
+        localStorage.removeItem('standor_token');
+        localStorage.removeItem('standor_token_expiration');
+        return null;
+      }
+      return token;
+    }
+    return null;
+  })(),
+  tokenExpiration: (() => {
+    const expiration = localStorage.getItem('standor_token_expiration');
+    if (expiration) {
+      const exp = parseInt(expiration, 10);
+      if (Date.now() >= exp) {
+        localStorage.removeItem('standor_token_expiration');
+        return null;
+      }
+      return exp;
+    }
+    return null;
+  })(),
+  sessionCheckInterval: null,
   authLoading: false,
 
   setAuth: (user, token) => {
-    localStorage.setItem('standor_user', JSON.stringify(user));
-    localStorage.setItem('standor_token', token);
-    set({ user, token, authLoading: false });
+    try {
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      const loginTime = Date.now();
+
+      // Decode JWT expiry if available
+      let jwtExpiration: number | null = null;
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp) jwtExpiration = payload.exp * 1000;
+      } catch { /* ignore malformed JWT */ }
+
+      // Enforce strict 1-hour cap from login time (client-side rate limit)
+      const maxAllowed = loginTime + ONE_HOUR_MS;
+      const expiration = jwtExpiration
+        ? Math.min(jwtExpiration, maxAllowed)
+        : maxAllowed;
+
+      localStorage.setItem('standor_user', JSON.stringify(user));
+      localStorage.setItem('standor_token', token);
+      localStorage.setItem('standor_token_expiration', expiration.toString());
+      localStorage.setItem('standor_login_time', loginTime.toString());
+
+      set({ user, token, tokenExpiration: expiration, authLoading: false });
+
+      get().startSessionMonitor();
+    } catch (error) {
+      console.error('Error setting auth:', error);
+      // Fallback: still enforce 1-hour cap even if token decode fails
+      const expiration = Date.now() + 60 * 60 * 1000;
+      localStorage.setItem('standor_user', JSON.stringify(user));
+      localStorage.setItem('standor_token', token);
+      localStorage.setItem('standor_token_expiration', expiration.toString());
+      set({ user, token, tokenExpiration: expiration, authLoading: false });
+      get().startSessionMonitor();
+    }
   },
 
   logout: () => {
+    get().stopSessionMonitor();
+
     const token = localStorage.getItem('standor_token');
     if (token) {
       fetch('http://localhost:4000/api/auth/logout', {
@@ -147,10 +232,58 @@ const useStore = create<StoreState>((set, get) => ({
     }
     localStorage.removeItem('standor_user');
     localStorage.removeItem('standor_token');
-    set({ user: null, token: null, sessions: [], currentSession: null, packets: [], selectedPacket: null, annotations: [], collaborators: [] });
+    localStorage.removeItem('standor_token_expiration');
+    localStorage.removeItem('standor_login_time');
+
+    set({
+      user: null,
+      token: null,
+      tokenExpiration: null,
+      sessionCheckInterval: null,
+      sessions: [],
+      currentSession: null,
+      packets: [],
+      selectedPacket: null,
+      annotations: [],
+      collaborators: []
+    });
   },
 
   setAuthLoading: (v) => set({ authLoading: v }),
+
+  checkTokenExpiration: () => {
+    const expiration = get().tokenExpiration;
+    if (!expiration) return true;
+    return Date.now() >= expiration;
+  },
+
+  startSessionMonitor: () => {
+    const existing = get().sessionCheckInterval;
+    if (existing) clearInterval(existing);
+
+    const interval = setInterval(() => {
+      const isExpired = get().checkTokenExpiration();
+      if (isExpired) {
+        import('sonner').then(({ toast }) => {
+          toast.error('Session Expired', {
+            description: 'Your session has expired. Please log in again.',
+          });
+        });
+        get().logout();
+        window.location.href = '/login';
+      }
+    }, 60000);
+
+    set({ sessionCheckInterval: interval });
+  },
+
+  stopSessionMonitor: () => {
+    const interval = get().sessionCheckInterval;
+    if (interval) {
+      clearInterval(interval);
+      set({ sessionCheckInterval: null });
+    }
+  },
 
   theme: 'dark',
   toggleTheme: () => set((s) => ({ theme: s.theme === 'dark' ? 'light' : 'dark' })),

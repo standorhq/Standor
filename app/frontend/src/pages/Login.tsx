@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff, ArrowRight, Mail, Lock, Loader2 } from 'lucide-react';
 import useStore from '../store/useStore';
 import api, { API_BASE } from '../lib/api';
+import StandorLogo from '../components/StandorLogo';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -65,7 +66,8 @@ export default function Login() {
       <div className="w-full max-w-[420px]">
         {/* Logo */}
         <div className="text-center mb-10">
-          <Link to="/" className="inline-block">
+          <Link to="/" className="inline-flex items-center gap-3">
+            <StandorLogo size={32} />
             <h1 className="text-2xl font-bold text-white tracking-tight">Standor</h1>
           </Link>
           <p className="text-neutral-500 text-sm mt-2">Sign in to your account</p>

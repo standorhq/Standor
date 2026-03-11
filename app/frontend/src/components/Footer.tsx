@@ -20,6 +20,7 @@ function LinkedinIcon({ size = 18 }: { size?: number }) {
 }
 import api from '../utils/api';
 import { useTranslation, SupportedLocale } from '../hooks/useTranslation';
+import StandorLogo from './StandorLogo';
 
 const LINK_GROUPS = [
   {
@@ -104,8 +105,8 @@ export default function Footer() {
               className="flex items-center gap-3 cursor-pointer group"
               onClick={() => handleLink('/')}
             >
-              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center transition-all duration-500 group-hover:scale-110 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.15)] shadow-[0_0_20px_rgba(255,255,255,0.05)]">
-                <span className="text-black font-black text-lg">ST</span>
+              <div className="transition-all duration-500 group-hover:scale-110 group-hover:shadow-[0_0_30px_rgba(255,255,255,0.15)] shadow-[0_0_20px_rgba(255,255,255,0.05)]">
+                <StandorLogo size={40} />
               </div>
               <span className="text-xl font-black text-white tracking-tighter uppercase italic">Standor</span>
             </div>

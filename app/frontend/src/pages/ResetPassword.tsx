@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Loader2, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { authApi } from '../utils/api';
 import PasswordStrength from '../components/PasswordStrength';
+import StandorLogo from '../components/StandorLogo';
 
 export default function ResetPassword() {
   const navigate = useNavigate();
@@ -59,9 +60,7 @@ export default function ResetPassword() {
     <div className="min-h-screen bg-ns-bg-900 flex items-center justify-center px-4" data-testid="reset-password-page">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-10">
-          <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center">
-            <span className="text-black font-bold text-xs">NS</span>
-          </div>
+          <StandorLogo size={36} />
           <span className="font-semibold text-white text-lg">Standor</span>
         </div>
 

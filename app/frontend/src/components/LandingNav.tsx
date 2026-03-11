@@ -4,6 +4,7 @@ import { Menu, X, ArrowRight, LogOut, LayoutDashboard, Settings } from 'lucide-r
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 import useStore from '../store/useStore';
+import StandorLogo from './StandorLogo';
 
 const NAV_LINKS = [
     { label: 'Home', href: '/', id: 'home' },
@@ -77,10 +78,11 @@ export default function LandingNav() {
                 {/* Branding - Left Section */}
                 <div
                     className="flex items-center gap-3 cursor-pointer group shrink-0 pointer-events-auto"
-                    onClick={() => handleLink('/')}
+                    onClick={() => navigate('/')}
+                    title="Go to Home"
                 >
-                    <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center transition-transform group-hover:scale-110 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                        <span className="text-black font-bold text-base">NS</span>
+                    <div className="transition-transform group-hover:scale-110">
+                        <StandorLogo size={36} />
                     </div>
                     <span className="text-xl font-bold text-white tracking-tight drop-shadow-sm">Standor</span>
                 </div>
@@ -188,13 +190,13 @@ export default function LandingNav() {
                     ) : (
                         <>
                             <button
-                                onClick={() => navigate('/login')}
+                                onClick={() => window.open('/login', '_blank', 'noopener,noreferrer')}
                                 className="text-xs font-bold text-white hover:text-ns-grey-300 transition-colors uppercase tracking-widest px-2"
                             >
                                 Sign In
                             </button>
                             <button
-                                onClick={() => navigate('/register')}
+                                onClick={() => window.open('/register', '_blank', 'noopener,noreferrer')}
                                 className="group px-6 py-2.5 bg-white text-black rounded-full text-xs font-bold hover:bg-ns-grey-100 transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-white/5"
                             >
                                 Get Started
@@ -240,13 +242,13 @@ export default function LandingNav() {
                     ) : (
                         <>
                             <button
-                                onClick={() => { navigate('/login'); setMobileOpen(false); }}
+                                onClick={() => { window.open('/login', '_blank', 'noopener,noreferrer'); setMobileOpen(false); }}
                                 className="text-xl font-bold text-white"
                             >
                                 Sign In
                             </button>
                             <button
-                                onClick={() => { navigate('/register'); setMobileOpen(false); }}
+                                onClick={() => { window.open('/register', '_blank', 'noopener,noreferrer'); setMobileOpen(false); }}
                                 className="text-xl font-bold text-white bg-white/10 px-8 py-3 rounded-full"
                             >
                                 Get Started

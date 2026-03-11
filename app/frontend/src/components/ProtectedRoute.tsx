@@ -14,6 +14,23 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
   const [checking, setChecking] = useState(!user && !!token);
 
   useEffect(() => {
+    // Check token expiration first
+    if (token) {
+      const store = useStore.getState();
+      const isExpired = store.checkTokenExpiration();
+      
+      if (isExpired) {
+        import('sonner').then(({ toast }) => {
+          toast.error('Session Expired', {
+            description: 'Your session has expired. Please log in again.',
+          });
+        });
+        logout();
+        setChecking(false);
+        return;
+      }
+    }
+    
     if (!user && token) {
       api.get('/auth/me')
         .then(({ data }) => {

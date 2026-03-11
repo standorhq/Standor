@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Loader2, Mail, ArrowRight } from 'lucide-react';
 import api, { API_BASE } from '../lib/api';
+import StandorLogo from '../components/StandorLogo';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -72,9 +73,7 @@ export default function Register() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#050505] px-4 font-sans">
       {/* Brand Header */}
       <div className="flex items-center gap-3 mb-12">
-        <div className="w-8 h-8 bg-white text-black font-bold flex items-center justify-center rounded-[6px] text-sm">
-          NS
-        </div>
+        <StandorLogo size={32} />
         <span className="text-white font-semibold text-xl tracking-tight">Standor</span>
       </div>
 

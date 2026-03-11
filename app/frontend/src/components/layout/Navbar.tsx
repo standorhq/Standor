@@ -4,6 +4,7 @@ import { Menu, X, ArrowRight, LogOut, Settings } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import useStore from '../../store/useStore';
+import StandorLogo from '../StandorLogo';
 
 const MARKETING_LINKS = [
     { label: 'Features', href: '/features' },
@@ -59,10 +60,11 @@ export function Navbar() {
                 <div className="ns-container flex items-center justify-between pointer-events-none">
                     <div
                         className="flex items-center gap-2.5 cursor-pointer group pointer-events-auto"
-                        onClick={() => navigate('/dashboard')}
+                        onClick={() => navigate('/')}
+                        title="Go to Home"
                     >
-                        <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center transition-transform group-hover:scale-105">
-                            <span className="text-black font-bold text-xs">ST</span>
+                        <div className="transition-transform group-hover:scale-105">
+                            <StandorLogo size={32} />
                         </div>
                         <span className="text-base font-bold text-white tracking-tight hidden sm:block">Standor</span>
                     </div>
@@ -115,8 +117,8 @@ export function Navbar() {
                     to="/"
                     className="flex items-center gap-2.5 group pointer-events-auto"
                 >
-                    <div className="w-8 h-8 md:w-9 md:h-9 rounded-lg bg-white flex items-center justify-center transition-transform group-hover:scale-105 shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                        <span className="text-black font-bold text-xs md:text-sm">ST</span>
+                    <div className="transition-transform group-hover:scale-105">
+                        <StandorLogo size={36} />
                     </div>
                     <span className="text-lg md:text-xl font-bold text-white tracking-tight">Standor</span>
                 </Link>
@@ -160,9 +162,11 @@ export function Navbar() {
                         </Link>
                     ) : (
                         <>
-                            <Link to="/login" className="text-[11px] font-bold text-neutral-400 hover:text-white transition-colors uppercase tracking-widest px-2">Log in</Link>
+                            <Link to="/login" target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-neutral-400 hover:text-white transition-colors uppercase tracking-widest px-2">Log in</Link>
                             <Link
                                 to="/register"
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="px-6 py-2.5 bg-white text-black rounded-full text-[11px] font-bold hover:bg-neutral-100 transition-all flex items-center gap-2 active:scale-95"
                             >
                                 Get Started <ArrowRight size={14} />
@@ -207,8 +211,8 @@ export function Navbar() {
                             <Link to="/dashboard" onClick={() => setMobileOpen(false)} className="text-xl font-bold text-white">Dashboard</Link>
                         ) : (
                             <>
-                                <Link to="/login" onClick={() => setMobileOpen(false)} className="text-xl font-bold text-white">Log in</Link>
-                                <Link to="/register" onClick={() => setMobileOpen(false)} className="px-8 py-3 bg-white text-black rounded-full font-bold text-lg">Get Started</Link>
+                                <Link to="/login" target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="text-xl font-bold text-white">Log in</Link>
+                                <Link to="/register" target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} className="px-8 py-3 bg-white text-black rounded-full font-bold text-lg">Get Started</Link>
                             </>
                         )}
                     </motion.div>

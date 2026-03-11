@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import StandorLogo from '../components/StandorLogo';
 
 /**
  * AuthMagic
@@ -55,9 +56,7 @@ export default function AuthMagic() {
     <div className="min-h-screen bg-ns-bg-900 flex flex-col items-center justify-center gap-5">
 
       {/* Standor Logo */}
-      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center">
-        <span className="text-black font-bold text-xs tracking-tight">ST</span>
-      </div>
+      <StandorLogo size={40} />
 
       {/* Loading Spinner */}
       <Loader2 size={22} className="animate-spin text-ns-grey-500" />

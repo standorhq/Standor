@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Loader2, ArrowLeft, Mail } from 'lucide-react';
 import { authApi } from '../utils/api';
+import StandorLogo from '../components/StandorLogo';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
@@ -42,9 +43,7 @@ export default function ForgotPassword() {
     <div className="min-h-screen bg-ns-bg-900 flex items-center justify-center px-4" data-testid="forgot-password-page">
       <div className="w-full max-w-sm">
         <div className="flex items-center justify-center gap-2.5 mb-10">
-          <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center">
-            <span className="text-black font-bold text-xs">NS</span>
-          </div>
+          <StandorLogo size={36} />
           <span className="font-semibold text-white text-lg">Standor</span>
         </div>
 

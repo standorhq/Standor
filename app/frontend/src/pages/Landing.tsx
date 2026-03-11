@@ -56,7 +56,7 @@ export default function Landing() {
                 Join Meeting
                 <Play size={16} fill="currentColor" />
               </Link>
-              <Link to="/login" className="px-8 py-3 rounded-lg border border-white/20 bg-black text-white font-medium hover:bg-white/5 transition-all">
+              <Link to="/login" target="_blank" rel="noopener noreferrer" className="px-8 py-3 rounded-lg border border-white/20 bg-black text-white font-medium hover:bg-white/5 transition-all">
                 Login
               </Link>
             </div>

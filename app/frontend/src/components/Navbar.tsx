@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import useStore from '../store/useStore';
 import GlobalSearch from './GlobalSearch';
 import { Menu, X, Sun, Moon, LogOut, Settings } from 'lucide-react';
+import StandorLogo from './StandorLogo';
 
 export default function NavBar() {
   const navigate = useNavigate();
@@ -50,6 +51,14 @@ export default function NavBar() {
     setTimeout(() => logout(), 0);
   };
 
+  const handleLogoClick = () => {
+    if (user) {
+      navigate('/dashboard');
+    } else {
+      navigate('/');
+    }
+  };
+
   return (
     <nav
       className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-300 ${isScrolled ? 'py-3' : 'py-5'}`}
@@ -63,11 +72,11 @@ export default function NavBar() {
           {/* Logo */}
           <div
             className="flex items-center gap-2.5 cursor-pointer group select-none"
-            onClick={() => navigate('/')}
+            onClick={handleLogoClick}
             data-testid="logo-section"
           >
-            <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center transition-transform group-hover:scale-110">
-              <span className="text-black font-bold text-sm">ST</span>
+            <div className="transition-transform group-hover:scale-110">
+              <StandorLogo size={32} />
             </div>
             <span className="text-base font-bold text-white tracking-tight hidden sm:block">Standor</span>
           </div>

@@ -53,7 +53,7 @@ export const googleAuthCallback = async (req, res) => {
         }
 
         const token = jwt.sign({ userId: user._id }, ENV.JWT_SECRET, {
-            expiresIn: "7d",
+            expiresIn: "1h",
         });
 
         // Track active session
@@ -114,7 +114,7 @@ export const googleAuth = async (req, res) => {
         }
 
         const token = jwt.sign({ userId: user._id }, ENV.JWT_SECRET, {
-            expiresIn: "7d",
+            expiresIn: "1h",
         });
 
         // Track active session
