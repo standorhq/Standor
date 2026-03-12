@@ -6,7 +6,7 @@ const API_BASE = (envUrl && envUrl !== 'undefined') ? envUrl : 'http://localhost
 
 const api = axios.create({
     baseURL: `${API_BASE}/api`,
-    withCredentials: true, // send cookies (refresh token)
+    withCredentials: true,
     headers: { 'Content-Type': 'application/json' },
 });
 
@@ -19,79 +19,28 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-// Auto-refresh on 401
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (v: any) => void; reject: (e: any) => void }> = [];
-
-const processQueue = (error: any, token: string | null = null) => {
-    failedQueue.forEach((prom) => {
-        if (error) prom.reject(error);
-        else prom.resolve(token);
-    });
-    failedQueue = [];
-};
-
+// Handle 401 — logout on expired/invalid token
 api.interceptors.response.use(
     (res) => res,
     async (error) => {
         const originalRequest = error.config;
 
         if (error.response?.status === 401 && !originalRequest._retry) {
-            // Check if token is expired
-            const store = useStore.getState();
-            const isExpired = store.checkTokenExpiration();
-            
-            if (isExpired) {
-                // Token expired - logout immediately
-                import('sonner').then(({ toast }) => {
-                    toast.error('Session Expired', {
-                        description: 'Your session has expired. Please log in again.',
-                    });
-                });
-                
-                store.logout();
-                window.location.href = '/login';
-                return Promise.reject(error);
-            }
-            
-            if (isRefreshing) {
-                return new Promise((resolve, reject) => {
-                    failedQueue.push({ resolve, reject });
-                }).then((token) => {
-                    originalRequest.headers.Authorization = `Bearer ${token}`;
-                    return api(originalRequest);
-                });
-            }
-
             originalRequest._retry = true;
-            isRefreshing = true;
 
-            try {
-                const { data } = await axios.post(
-                    `${API_BASE}/api/auth/refresh`,
-                    {},
-                    { withCredentials: true }
-                );
-                const newToken = data.accessToken;
-                useStore.getState().setAuth(useStore.getState().user!, newToken);
-                processQueue(null, newToken);
-                originalRequest.headers.Authorization = `Bearer ${newToken}`;
-                return api(originalRequest);
-            } catch (refreshError) {
-                processQueue(refreshError, null);
-                
+            const store = useStore.getState();
+            store.logout();
+
+            // Only redirect if not already on login page
+            if (!window.location.pathname.startsWith('/login')) {
                 import('sonner').then(({ toast }) => {
                     toast.error('Session Expired', {
                         description: 'Your session has expired. Please log in again.',
                     });
                 });
-                
-                useStore.getState().logout();
                 window.location.href = '/login';
-                return Promise.reject(refreshError);
-            } finally {
-                isRefreshing = false;
             }
+            return Promise.reject(error);
         }
 
         return Promise.reject(error);

@@ -16,70 +16,31 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// ── Auto-refresh on 401 ──
-// When the access token expires, use the refresh token to get a new one
-// transparently, so the user stays logged in.
-let isRefreshing = false;
-let failedQueue: Array<{ resolve: (t: string) => void; reject: (e: unknown) => void }> = [];
-
-const processQueue = (error: unknown, token: string | null) => {
-  failedQueue.forEach(({ resolve, reject }) => {
-    if (error) reject(error);
-    else resolve(token!);
-  });
-  failedQueue = [];
-};
-
+// Handle 401 — logout on expired/invalid token
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Only attempt refresh for 401s that aren't the refresh endpoint itself
     if (
-      error.response?.status !== 401 ||
-      originalRequest._retry ||
-      originalRequest.url?.includes('/auth/refresh') ||
-      originalRequest.url?.includes('/auth/login')
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/login')
     ) {
+      originalRequest._retry = true;
+
+      localStorage.removeItem('standor_token');
+      localStorage.removeItem('standor_user');
+      localStorage.removeItem('standor_token_expiration');
+      localStorage.removeItem('standor_login_time');
+
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
       return Promise.reject(error);
     }
 
-    // The refresh token is stored as an HTTP-only cookie, automatically sent
-    // with withCredentials: true. No need to check localStorage.
-
-    if (isRefreshing) {
-      // Queue this request until the refresh completes
-      return new Promise<string>((resolve, reject) => {
-        failedQueue.push({ resolve, reject });
-      }).then((token) => {
-        originalRequest.headers.Authorization = `Bearer ${token}`;
-        return api(originalRequest);
-      });
-    }
-
-    originalRequest._retry = true;
-    isRefreshing = true;
-
-    try {
-      // Send empty body — backend reads refresh token from HTTP-only cookie
-      const { data } = await axios.post(`${API}/api/auth/refresh`, {}, { withCredentials: true });
-      const newToken = data.accessToken || data.token;
-      localStorage.setItem('standor_token', newToken);
-      originalRequest.headers.Authorization = `Bearer ${newToken}`;
-      processQueue(null, newToken);
-      return api(originalRequest);
-    } catch (refreshError) {
-      processQueue(refreshError, null);
-      // Refresh failed — clear auth state
-      localStorage.removeItem('standor_token');
-      localStorage.removeItem('standor_refresh');
-      localStorage.removeItem('standor_user');
-      window.location.href = '/login';
-      return Promise.reject(refreshError);
-    } finally {
-      isRefreshing = false;
-    }
+    return Promise.reject(error);
   }
 );
 

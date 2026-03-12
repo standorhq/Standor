@@ -13,6 +13,21 @@ const lobbies = new Map();
 // Map socketId -> { meetingCode, userId, name }
 const socketMeetingMap = new Map();
 
+// Virtual-Meet 3D state: roomId -> Map<socketId, { peerId, name, isAdmin }>
+const virtualMeetRooms = new Map();
+
+// Virtual-Meet waiting room: roomId -> Map<socketId, { name }>
+const vmWaitingRoom = new Map();
+
+function getVmWaitingList(roomId) {
+  const waitingRoom = vmWaitingRoom.get(roomId);
+  if (!waitingRoom) return [];
+  return Array.from(waitingRoom.entries()).map(([socketId, info]) => ({
+    socketId,
+    name: info.name,
+  }));
+}
+
 function getMeetingState(code) {
   if (!meetings.has(code)) {
     meetings.set(code, {
@@ -572,6 +587,114 @@ export const initSocket = (server) => {
     });
 
     // ==========================================
+    // Virtual-Meet Rooms (max 150 participants)
+    // ==========================================
+
+    socket.on("join", (roomId, userName) => {
+      socket.vmRoom = roomId;
+      if (!virtualMeetRooms.has(roomId)) {
+        virtualMeetRooms.set(roomId, new Map());
+      }
+      const room = virtualMeetRooms.get(roomId);
+      if (room.size >= 150) {
+        socket.emit("room-full");
+        return;
+      }
+      const isAdmin = room.size === 0;
+      socket.vmIsAdmin = isAdmin;
+
+      if (isAdmin) {
+        // Admin joins immediately
+        socket.join(`vm-${roomId}`);
+        room.set(socket.id, { peerId: null, name: userName || "Host", isAdmin: true });
+        socket.emit("joined-room", roomId);
+      } else {
+        // Non-admin: put in waiting room for host approval
+        if (!vmWaitingRoom.has(roomId)) vmWaitingRoom.set(roomId, new Map());
+        vmWaitingRoom.get(roomId).set(socket.id, { name: userName || "Guest" });
+        socket.vmWaiting = true;
+        socket.emit("vm-waiting");
+        // Notify admin
+        io.to(`vm-${roomId}`).emit("vm-pending-users", getVmWaitingList(roomId));
+      }
+    });
+
+    // Host admits a waiting user
+    socket.on("vm-admit", (waitingSocketId) => {
+      if (!socket.vmIsAdmin || !socket.vmRoom) return;
+      const roomId = socket.vmRoom;
+      const waitingRoom = vmWaitingRoom.get(roomId);
+      if (!waitingRoom || !waitingRoom.has(waitingSocketId)) return;
+
+      waitingRoom.delete(waitingSocketId);
+      if (waitingRoom.size === 0) vmWaitingRoom.delete(roomId);
+
+      const waitingSock = io.sockets.sockets.get(waitingSocketId);
+      if (waitingSock) {
+        waitingSock.join(`vm-${roomId}`);
+        waitingSock.vmWaiting = false;
+        waitingSock.emit("vm-admitted", roomId);
+      }
+      // Update admin's pending list
+      socket.emit("vm-pending-users", getVmWaitingList(roomId));
+    });
+
+    // Host denies a waiting user
+    socket.on("vm-deny", (waitingSocketId) => {
+      if (!socket.vmIsAdmin || !socket.vmRoom) return;
+      const roomId = socket.vmRoom;
+      const waitingRoom = vmWaitingRoom.get(roomId);
+      if (!waitingRoom || !waitingRoom.has(waitingSocketId)) return;
+
+      waitingRoom.delete(waitingSocketId);
+      if (waitingRoom.size === 0) vmWaitingRoom.delete(roomId);
+
+      const waitingSock = io.sockets.sockets.get(waitingSocketId);
+      if (waitingSock) {
+        waitingSock.emit("vm-denied");
+      }
+      // Update admin's pending list
+      socket.emit("vm-pending-users", getVmWaitingList(roomId));
+    });
+
+    socket.on("user-model", (model) => {
+      if (!socket.vmRoom) return;
+      const room = virtualMeetRooms.get(socket.vmRoom);
+      if (room) {
+        room.set(socket.id, { peerId: model.peerId, name: model.name, isAdmin: socket.vmIsAdmin });
+      }
+    });
+
+    socket.on("get-all-users", () => {
+      if (!socket.vmRoom) return;
+      const room = virtualMeetRooms.get(socket.vmRoom);
+      if (!room) return;
+      const players = {};
+      room.forEach((value, key) => {
+        if (key !== socket.id) {
+          players[key] = value;
+        }
+      });
+      socket.emit("all-users", players);
+    });
+
+    socket.on("end-for-all", () => {
+      if (!socket.vmRoom) return;
+      const roomId = socket.vmRoom;
+      // Deny all waiting users
+      const waitingRoom = vmWaitingRoom.get(roomId);
+      if (waitingRoom) {
+        waitingRoom.forEach((info, wSocketId) => {
+          const ws = io.sockets.sockets.get(wSocketId);
+          if (ws) ws.emit("vm-denied");
+        });
+        vmWaitingRoom.delete(roomId);
+      }
+      io.to(`vm-${roomId}`).emit("admin-ended-call");
+      virtualMeetRooms.delete(roomId);
+    });
+
+    // ==========================================
     // Disconnect Cleanup
     // ==========================================
 
@@ -669,6 +792,33 @@ export const initSocket = (server) => {
             );
           }
           if (lobby.size === 0) lobbies.delete(socket.lobbyRoom);
+        }
+      }
+
+      // Virtual-Meet waiting room cleanup
+      if (socket.vmWaiting && socket.vmRoom) {
+        const waitingRoom = vmWaitingRoom.get(socket.vmRoom);
+        if (waitingRoom) {
+          waitingRoom.delete(socket.id);
+          if (waitingRoom.size === 0) vmWaitingRoom.delete(socket.vmRoom);
+          // Notify admin of updated waiting list
+          io.to(`vm-${socket.vmRoom}`).emit("vm-pending-users", getVmWaitingList(socket.vmRoom));
+        }
+      }
+
+      // Virtual-Meet room cleanup
+      if (socket.vmRoom) {
+        const room = virtualMeetRooms.get(socket.vmRoom);
+        if (room) {
+          const userInfo = room.get(socket.id);
+          room.delete(socket.id);
+          if (userInfo) {
+            socket.to(`vm-${socket.vmRoom}`).emit("user-disconnected", {
+              socketId: socket.id,
+              peerId: userInfo.peerId,
+            });
+          }
+          if (room.size === 0) virtualMeetRooms.delete(socket.vmRoom);
         }
       }
     });

@@ -82,6 +82,7 @@ const Replay = lazy(() => import("./pages/Replay"));
 const Lobby = lazy(() => import("./pages/Lobby"));
 const JoinMeeting = lazy(() => import("./pages/JoinMeeting"));
 const MeetingRoom = lazy(() => import("./pages/MeetingRoom"));
+const VirtualMeetPage = lazy(() => import("./features/virtual-meet/VirtualMeetPage"));
 
 // ───── Apply accessibility on load ─────
 initAccessibility();
@@ -184,7 +185,8 @@ function AppContent() {
   const isCodePairRoute = location.pathname.startsWith("/codepair/");
   const isMeetingRoute = location.pathname.startsWith("/meeting/");
   const isJoinRoute = location.pathname.startsWith("/join");
-  const isFullScreenRoute = isDemoRoute || isCodePairRoute || isMeetingRoute || isJoinRoute;
+  const isVirtualMeetRoute = location.pathname.startsWith("/virtual-meet");
+  const isFullScreenRoute = isDemoRoute || isCodePairRoute || isMeetingRoute || isJoinRoute || isVirtualMeetRoute;
 
   useEffect(() => {
     trackPageview(location.pathname);
@@ -201,6 +203,13 @@ function AppContent() {
         className={`relative flex-1 flex flex-col ${!isAuthPage && !isFullScreenRoute ? "pt-10 md:pt-12" : ""}`}
       >
         {!isAuthPage && !isFullScreenRoute && <Navbar />}
+        {isVirtualMeetRoute ? (
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/virtual-meet/*" element={<VirtualMeetPage />} />
+            </Routes>
+          </Suspense>
+        ) : (
         <PageTransition>
           <Suspense fallback={<PageLoader />}>
             <Routes>
@@ -513,6 +522,7 @@ function AppContent() {
             </Routes>
           </Suspense>
         </PageTransition>
+        )}
         {!isAuthPage && !isFullScreenRoute && <Footer />}
       </div>
     </div>

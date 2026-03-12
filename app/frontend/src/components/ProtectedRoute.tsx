@@ -34,18 +34,23 @@ export default function ProtectedRoute({ children, requiredRole }: ProtectedRout
     if (!user && token) {
       api.get('/auth/me')
         .then(({ data }) => {
-          // Backend returns { user: { _id, email, name, role, ... } }
           const u = data.user ?? data;
+          // Use setAuth to persist user but preserve existing token expiration
+          const existingExp = localStorage.getItem('standor_token_expiration');
           setAuth({
             id: u._id ?? u.id,
             _id: u._id ?? u.id,
             email: u.email,
             name: u.name,
             role: u.role ?? 'USER',
-            avatar: u.avatar,
+            avatar: u.avatar ?? u.profileImage,
             emailVerified: u.emailVerified,
             mfaEnabled: u.mfaEnabled ?? false,
           }, token);
+          // Restore original expiration so refresh doesn't extend the timer
+          if (existingExp) {
+            localStorage.setItem('standor_token_expiration', existingExp);
+          }
           setChecking(false);
         })
         .catch(() => {

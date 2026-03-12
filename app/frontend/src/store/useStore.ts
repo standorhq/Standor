@@ -181,6 +181,19 @@ const useStore = create<StoreState>((set, get) => ({
   sessionCheckInterval: null,
   authLoading: false,
 
+  // Start session monitor automatically if user is already authenticated from localStorage
+  ...((() => {
+    const token = localStorage.getItem('standor_token');
+    const expiration = localStorage.getItem('standor_token_expiration');
+    if (token && expiration && Date.now() < parseInt(expiration, 10)) {
+      // Will be started after store creation via setTimeout
+      setTimeout(() => {
+        useStore.getState().startSessionMonitor();
+      }, 0);
+    }
+    return {};
+  })()),
+
   setAuth: (user, token) => {
     try {
       const ONE_HOUR_MS = 60 * 60 * 1000;
