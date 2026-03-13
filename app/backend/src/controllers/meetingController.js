@@ -10,12 +10,12 @@ const MAX_PARTICIPANTS = 50;
 export async function createMeeting(req, res) {
   try {
     const userId = req.user._id;
-    const { title } = req.body;
+    const { title, problem, difficulty, language } = req.body;
 
     const session = await Session.create({
-      problem: title || "Meeting",
-      difficulty: "MEDIUM",
-      language: "javascript",
+      problem: problem || title || "Meeting",
+      difficulty: difficulty ? difficulty.toUpperCase() : "MEDIUM",
+      language: language || "javascript",
       hostId: userId,
       type: "MEETING",
       maxParticipants: MAX_PARTICIPANTS,
@@ -29,6 +29,9 @@ export async function createMeeting(req, res) {
       roomId: session.roomId,
       hostId: session.hostId,
       status: session.status,
+      problem: session.problem,
+      difficulty: session.difficulty,
+      language: session.language,
       maxParticipants: session.maxParticipants,
       meetingLink: `${ENV.CLIENT_URL || ""}/join/${session.callId}`,
     });
@@ -57,6 +60,9 @@ export async function getMeeting(req, res) {
       roomId: session.roomId,
       hostId: session.hostId,
       status: session.status,
+      problem: session.problem,
+      difficulty: session.difficulty,
+      language: session.language,
     });
   } catch (error) {
     console.log("Error in getMeeting controller:", error.message);

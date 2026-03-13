@@ -54,8 +54,13 @@ export default function JoinMeeting() {
 
     const stopMedia = useCallback(() => {
         if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
+                // DO NOT STOP TRACKS — preserve device access for privacy
+                // Just disconnect from DOM and clear reference
+                // Tracks will be reused or browser will clean up later
+                if (videoRef.current) {
+                    videoRef.current.srcObject = null;
+                }
+                streamRef.current = null;
         }
     }, []);
 
@@ -66,13 +71,17 @@ export default function JoinMeeting() {
             });
 
             socket.on('connect', () => {
-                socket.emit('join-meeting-waiting-room', { code: code.trim() });
+                socket.emit('join-meeting-waiting-room', {
+                    code: code.trim(),
+                    userId: user?.id || (user as any)?._id,
+                    name: user?.name || guestName.trim(),
+                });
             });
 
             socket.on('meeting:admitted', () => {
                 toast.success('Admitted to meeting');
                 localStorage.setItem('standor_meeting_prefs', JSON.stringify({ micOn, camOn }));
-                navigate(`/meeting/${code.trim()}`);
+                navigate(`/meeting/${code.trim()}`, { state: { admitted: true } });
             });
 
             socket.on('meeting:denied', () => {

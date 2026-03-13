@@ -89,9 +89,46 @@ export const initSocket = (server) => {
     // Meeting Waiting Room
     // ==========================================
 
-    socket.on("join-meeting-waiting-room", ({ code }) => {
+    socket.on("join-meeting-waiting-room", ({ code, userId, name }) => {
       socket.join(`waiting-${code}`);
       socket.waitingCode = code;
+
+      // Also register this user as pending so the host can see and admit them
+      if (userId && name) {
+        const meeting = getMeetingState(code);
+        const alreadyParticipant = meeting.participants.find(
+          (p) => p.userId === userId
+        );
+        const alreadyPending = meeting.pendingParticipants.find(
+          (p) => p.userId === userId
+        );
+
+        if (!alreadyParticipant && !alreadyPending) {
+          meeting.pendingParticipants.push({
+            userId,
+            name,
+            isGuest: false,
+            requestedAt: new Date().toISOString(),
+            socketId: socket.id,
+          });
+
+          // Notify host about the new pending participant
+          const hostSocket = meeting.participants.find(
+            (p) => p.role === "HOST"
+          );
+          if (hostSocket) {
+            io.to(hostSocket.socketId).emit(
+              "meeting:pending-list-updated",
+              meeting.pendingParticipants.map((p) => ({
+                userId: p.userId,
+                name: p.name,
+                isGuest: p.isGuest,
+                requestedAt: p.requestedAt,
+              }))
+            );
+          }
+        }
+      }
     });
 
     // ==========================================
@@ -188,7 +225,15 @@ export const initSocket = (server) => {
               handRaised: p.handRaised,
             }))
           );
-        } else if (!alreadyPending) {
+        } else if (alreadyPending) {
+          // Update socketId so future admit reaches this socket
+          alreadyPending.socketId = socket.id;
+
+          // Tell the joining user to keep waiting
+          socket.emit("meeting:info", {
+            hostId: meeting.hostId,
+          });
+        } else {
           meeting.pendingParticipants.push({
             userId,
             name,
@@ -422,6 +467,19 @@ export const initSocket = (server) => {
       io.to(`meeting-${code}`).emit("meeting:chat-message", msg);
     });
 
+    // Chat typing indicators
+    socket.on("meeting:chat-typing", ({ code }) => {
+      const info = socketMeetingMap.get(socket.id);
+      if (!info) return;
+      socket.to(`meeting-${code}`).emit("meeting:chat-typing", { name: info.name });
+    });
+
+    socket.on("meeting:chat-stop-typing", ({ code }) => {
+      const info = socketMeetingMap.get(socket.id);
+      if (!info) return;
+      socket.to(`meeting-${code}`).emit("meeting:chat-stop-typing", { name: info.name });
+    });
+
     // ==========================================
     // Coding Mode & Editor Access
     // ==========================================
@@ -479,6 +537,27 @@ export const initSocket = (server) => {
         .emit("coding:sync", { code: newCode, language });
     });
 
+    // Typing indicator for meeting coding mode (from CodePair)
+    socket.on("meeting:coding-typing", ({ code }) => {
+      const info = socketMeetingMap.get(socket.id);
+      if (!info) return;
+      socket.to(`meeting-${code}`).emit("meeting:coding-typing-indicator", {
+        userId: info.userId,
+        name: info.name,
+      });
+    });
+
+    // Cursor position sync for meeting coding mode (from CodePair)
+    socket.on("meeting:coding-cursor", ({ code, cursor }) => {
+      const info = socketMeetingMap.get(socket.id);
+      if (!info) return;
+      socket.to(`meeting-${code}`).emit("meeting:coding-cursor-update", {
+        userId: info.userId,
+        name: info.name,
+        cursor,
+      });
+    });
+
     // ==========================================
     // WebRTC Signaling
     // ==========================================
@@ -490,7 +569,7 @@ export const initSocket = (server) => {
       // Notify everyone else in the media room to create a peer connection
       socket
         .to(`media-${roomId}`)
-        .emit("media:peer-joined", { socketId: socket.id, userName });
+        .emit("media:peer-joined", { socketId: socket.id, userName, userId });
     });
 
     socket.on("webrtc:offer", ({ to, offer, from }) => {

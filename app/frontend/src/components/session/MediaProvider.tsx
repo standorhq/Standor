@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 interface MediaContextType {
     localStream: MediaStream | null;
     remoteStreams: Map<string, MediaStream>;
+    remoteNames: Map<string, string>;          // socketId → display name
+    remoteSocketToUserId: Map<string, string>; // socketId → userId
     audioEnabled: boolean;
     videoEnabled: boolean;
     toggleAudio: () => void;
@@ -38,6 +40,84 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
     const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
     const currentRoomId = useRef<string | null>(null);
     const currentUserId = useRef<string | null>(null);
+    const localStreamRef = useRef<MediaStream | null>(null);
+
+    const remoteNamesRef = useRef<Map<string, string>>(new Map());
+    const remoteSocketToUserIdRef = useRef<Map<string, string>>(new Map());
+    const [remoteNames, setRemoteNames] = useState<Map<string, string>>(new Map());
+    const [remoteSocketToUserId, setRemoteSocketToUserId] = useState<Map<string, string>>(new Map());
+    // ICE candidates that arrived before setRemoteDescription was called
+    const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+
+    useEffect(() => {
+        localStreamRef.current = localStream;
+    }, [localStream]);
+
+    // When localStream changes (e.g. after getUserMedia resolves or track re-enabled),
+    // add any new tracks to already-established peer connections.
+    useEffect(() => {
+        if (!localStream) return;
+        for (const pc of peerConnections.current.values()) {
+            if (pc.signalingState === 'closed') continue;
+            localStream.getTracks().filter(t => t.readyState === 'live').forEach(track => {
+                if (!pc.getSenders().some(s => s.track?.id === track.id)) {
+                    pc.addTrack(track, localStream);
+                }
+            });
+        }
+    }, [localStream]);
+
+    const stopAndRemoveTrack = async (kind: 'audio' | 'video') => {
+        if (!localStream) return;
+
+        const tracksToRemove = localStream.getTracks().filter(track => track.kind === kind);
+        tracksToRemove.forEach(track => {
+            track.stop();
+            localStream.removeTrack(track);
+        });
+
+        for (const pc of peerConnections.current.values()) {
+            const sender = pc.getSenders().find(s => s.track?.kind === kind);
+            if (sender) {
+                await sender.replaceTrack(null);
+            }
+        }
+
+        const remaining = localStream.getTracks();
+        setLocalStream(remaining.length ? new MediaStream(remaining) : null);
+    };
+
+    const startTrack = async (kind: 'audio' | 'video') => {
+        const freshStream = await navigator.mediaDevices.getUserMedia({
+            audio: kind === 'audio',
+            video: kind === 'video',
+        });
+        const newTrack = kind === 'audio' ? freshStream.getAudioTracks()[0] : freshStream.getVideoTracks()[0];
+        if (!newTrack) return;
+
+        const base = localStream ? new MediaStream(localStream.getTracks()) : new MediaStream();
+        base.addTrack(newTrack);
+
+        for (const pc of peerConnections.current.values()) {
+            const sender = pc.getSenders().find(s => s.track?.kind === kind);
+            if (sender) {
+                await sender.replaceTrack(newTrack);
+            } else {
+                pc.addTrack(newTrack, base);
+            }
+        }
+
+        setLocalStream(base);
+    };
+
+    const stopAllLocalTracks = () => {
+        const activeStream = localStreamRef.current;
+        if (!activeStream) return;
+        activeStream.getTracks().forEach(track => track.stop());
+        setLocalStream(null);
+        setAudioEnabled(false);
+        setVideoEnabled(false);
+    };
 
     // Initialize local media
     useEffect(() => {
@@ -48,39 +128,54 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
                     audio: true,
                 });
                 setLocalStream(stream);
+                setAudioEnabled(stream.getAudioTracks().length > 0);
+                setVideoEnabled(stream.getVideoTracks().length > 0);
             } catch (err) {
                 console.error('Failed to get local stream:', err);
                 toast.error('Camera or microphone access denied');
+                setAudioEnabled(false);
+                setVideoEnabled(false);
             }
         };
 
-        if (!localStream) {
-            initMedia();
-        }
+        initMedia();
 
         return () => {
-            localStream?.getTracks().forEach(track => track.stop());
+            // Privacy mode: release camera/mic access when user leaves this page.
+            stopAllLocalTracks();
+            peerConnections.current.forEach(pc => pc.close());
+            peerConnections.current.clear();
         };
     }, []);
 
     const toggleAudio = () => {
-        if (localStream) {
-            const track = localStream.getAudioTracks()[0];
-            if (track) {
-                track.enabled = !track.enabled;
-                setAudioEnabled(track.enabled);
-            }
+        if (audioEnabled) {
+            void stopAndRemoveTrack('audio');
+            setAudioEnabled(false);
+            return;
         }
+        void startTrack('audio')
+            .then(() => setAudioEnabled(true))
+            .catch((err) => {
+                console.error('Failed to start microphone:', err);
+                toast.error('Could not access microphone');
+                setAudioEnabled(false);
+            });
     };
 
     const toggleVideo = () => {
-        if (localStream) {
-            const track = localStream.getVideoTracks()[0];
-            if (track) {
-                track.enabled = !track.enabled;
-                setVideoEnabled(track.enabled);
-            }
+        if (videoEnabled) {
+            void stopAndRemoveTrack('video');
+            setVideoEnabled(false);
+            return;
         }
+        void startTrack('video')
+            .then(() => setVideoEnabled(true))
+            .catch((err) => {
+                console.error('Failed to start camera:', err);
+                toast.error('Could not access camera');
+                setVideoEnabled(false);
+            });
     };
 
     const createPeerConnection = (remoteSocketId: string) => {
@@ -91,9 +186,13 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
         const pc = new RTCPeerConnection(ICE_SERVERS);
 
         // Add local tracks to the connection
-        localStream?.getTracks().forEach(track => {
-            pc.addTrack(track, localStream);
-        });
+        // Use the ref — localStream may be null in closure if getUserMedia is still in flight
+        const currentStream = localStreamRef.current;
+        if (currentStream) {
+            currentStream.getTracks().filter(t => t.readyState === 'live').forEach(track => {
+                pc.addTrack(track, currentStream);
+            });
+        }
 
         // Handle incoming remote tracks
         pc.ontrack = (event) => {
@@ -128,8 +227,14 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
         socket.emit('media:join', { roomId, userId, userName });
 
         // Listen for peer join signals
-        socket.on('media:peer-joined', async ({ socketId, userName: peerName }) => {
+        socket.on('media:peer-joined', async ({ socketId, userName: peerName, userId: peerUserId }) => {
             console.log(`[WebRTC] Peer joined: ${peerName} (${socketId})`);
+            remoteNamesRef.current.set(socketId, peerName);
+            setRemoteNames(new Map(remoteNamesRef.current));
+            if (peerUserId) {
+                remoteSocketToUserIdRef.current.set(socketId, peerUserId);
+                setRemoteSocketToUserId(new Map(remoteSocketToUserIdRef.current));
+            }
             const pc = createPeerConnection(socketId);
 
             // Generate offer as the person who was already in the room
@@ -147,6 +252,12 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
         socket.on('webrtc:offer', async ({ from, offer }) => {
             const pc = createPeerConnection(from);
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            // Drain any ICE candidates that arrived before the remote description
+            const buffered = pendingCandidates.current.get(from) || [];
+            for (const c of buffered) {
+                try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+            }
+            pendingCandidates.current.delete(from);
 
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -163,6 +274,12 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
             const pc = peerConnections.current.get(from);
             if (pc) {
                 await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                // Drain any ICE candidates buffered before setRemoteDescription
+                const buffered = pendingCandidates.current.get(from) || [];
+                for (const c of buffered) {
+                    try { await pc.addIceCandidate(new RTCIceCandidate(c)); } catch {}
+                }
+                pendingCandidates.current.delete(from);
             }
         });
 
@@ -170,7 +287,19 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
         socket.on('webrtc:ice-candidate', async ({ from, candidate }) => {
             const pc = peerConnections.current.get(from);
             if (pc) {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                if (pc.remoteDescription) {
+                    try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+                } else {
+                    // Buffer until remote description is set
+                    const arr = pendingCandidates.current.get(from) || [];
+                    arr.push(candidate);
+                    pendingCandidates.current.set(from, arr);
+                }
+            } else {
+                // PC not created yet — buffer
+                const arr = pendingCandidates.current.get(from) || [];
+                arr.push(candidate);
+                pendingCandidates.current.set(from, arr);
             }
         });
 
@@ -192,11 +321,16 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
                     next.delete(socketId);
                     return next;
                 });
+                remoteNamesRef.current.delete(socketId);
+                setRemoteNames(new Map(remoteNamesRef.current));
+                remoteSocketToUserIdRef.current.delete(socketId);
+                setRemoteSocketToUserId(new Map(remoteSocketToUserIdRef.current));
             }
         });
     };
 
     const leaveMedia = () => {
+        stopAllLocalTracks();
         peerConnections.current.forEach(pc => pc.close());
         peerConnections.current.clear();
         setRemoteStreams(new Map());
@@ -209,6 +343,8 @@ export const MediaProvider: React.FC<{ socket: Socket | null; children: React.Re
         <MediaContext.Provider value={{
             localStream,
             remoteStreams,
+            remoteNames,
+            remoteSocketToUserId,
             audioEnabled,
             videoEnabled,
             toggleAudio,

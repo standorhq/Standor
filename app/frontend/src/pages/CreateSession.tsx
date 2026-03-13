@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Loader2, ArrowRight, Code2, Search, ChevronRight } from 'lucide-react';
-import { roomsApi } from '../utils/api';
+import { Loader2, ArrowRight, Code2, Search, ChevronRight, Copy, Check, Link } from 'lucide-react';
+import { meetingsApi } from '../utils/api';
 import api from '../utils/api';
 import { toast } from 'sonner';
 
@@ -50,6 +50,8 @@ export default function CreateSession() {
   const [problems, setProblems] = useState<ProblemSuggestion[]>([]);
   const [loadingProblems, setLoadingProblems] = useState(true);
   const [showProblemPicker, setShowProblemPicker] = useState(false);
+  const [meetingLink, setMeetingLink] = useState<{ code: string; link: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     api.get('/problems')
@@ -84,14 +86,23 @@ export default function CreateSession() {
     }
     setLoading(true);
     try {
-      const room = await roomsApi.create({ problem: problem.trim(), difficulty, language });
-      toast.success('Interview session created');
-      navigate(`/meeting/${room.callId || (room as any).id || room._id}`);
+      const meeting = await meetingsApi.create({ problem: problem.trim(), difficulty, language });
+      const joinLink = `${window.location.origin}/join/${meeting.callId}`;
+      setMeetingLink({ code: meeting.callId, link: joinLink });
+      toast.success('Interview meeting created! Share the link with candidates.');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to create session');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCopyLink = () => {
+    if (!meetingLink) return;
+    navigator.clipboard.writeText(meetingLink.link);
+    setCopied(true);
+    toast.success('Meeting link copied to clipboard');
+    setTimeout(() => setCopied(false), 2000);
   };
 
   return (
@@ -220,20 +231,53 @@ export default function CreateSession() {
           </div>
 
           {/* Submit */}
-          <button
-            type="submit"
-            disabled={loading || !problem.trim()}
-            className="w-full flex items-center justify-center gap-2 py-3.5 bg-white text-black rounded-xl font-bold text-sm hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-8"
-          >
-            {loading ? (
-              <Loader2 size={18} className="animate-spin" />
-            ) : (
-              <>
-                Create Interview Room
+          {meetingLink ? (
+            <div className="space-y-4 mt-8">
+              <div className="bg-white/[0.03] border border-white/[0.1] rounded-xl p-5 space-y-3">
+                <div className="flex items-center gap-2 text-green-400 mb-2">
+                  <Check size={16} />
+                  <span className="text-sm font-semibold">Meeting Created</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link size={14} className="text-white/40 shrink-0" />
+                  <code className="text-xs text-white/70 font-mono break-all flex-1">{meetingLink.link}</code>
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="shrink-0 p-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] transition-colors"
+                  >
+                    {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} className="text-white/40" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-white/30">Share this link with candidates. They will be placed in a waiting room until you admit them.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => navigate(`/meeting/${meetingLink.code}`)}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-white text-black rounded-xl font-bold text-sm hover:bg-neutral-200 transition-all"
+              >
+                Enter Meeting Room
                 <ArrowRight size={16} />
-              </>
-            )}
-          </button>
+              </button>
+            </div>
+          ) : (
+            <>
+              <button
+                type="submit"
+                disabled={loading || !problem.trim()}
+                className="w-full flex items-center justify-center gap-2 py-3.5 bg-white text-black rounded-xl font-bold text-sm hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed transition-all mt-8"
+              >
+                {loading ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <>
+                    Create Interview Room
+                    <ArrowRight size={16} />
+                  </>
+                )}
+              </button>
+            </>
+          )}
 
           <button
             type="button"

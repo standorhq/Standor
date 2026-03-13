@@ -511,12 +511,37 @@ export interface ExecutionResult {
   version: string;
 }
 
+// ── Typing & Real-time Collaboration ───────────────────────────────────────
+export interface TypingEvent {
+  userId: string;
+  userName: string;
+  timestamp: number;
+  isTyping: boolean;
+}
+
+export interface PresenceState {
+  user?: { name: string; color?: string };
+  typing?: boolean;
+  selection?: { anchor: number; head: number };
+  cursor?: { line: number; column: number };
+}
+
+export interface CollaborationState {
+  activeWriters: string[];
+  presenceStates: Record<string, PresenceState>;
+}
+
 export const meetingsApi = {
-  create: (data?: { title?: string }): Promise<{ _id: string; id: string; callId: string; roomId: string; hostId: string; status: string; maxParticipants: number; meetingLink: string }> =>
+  create: (data?: { title?: string; problem?: string; difficulty?: string; language?: string }): Promise<{ _id: string; id: string; callId: string; roomId: string; hostId: string; status: string; problem: string; difficulty: string; language: string; maxParticipants: number; meetingLink: string }> =>
     api.post('/meetings', data || {}).then(r => r.data),
-  get: (code: string) => api.get(`/meetings/${code}`).then(r => r.data),
+  get: (code: string): Promise<{ id: string; callId: string; roomId: string; hostId: string; status: string; problem: string; difficulty: string; language: string }> =>
+    api.get(`/meetings/${code}`).then(r => r.data),
   join: (code: string) => api.post(`/meetings/${code}/join`).then(r => r.data),
   guestJoin: (code: string, name: string) => api.post(`/meetings/${code}/guest-join`, { name }).then(r => r.data),
+  broadcastTyping: (code: string, data: TypingEvent): Promise<{ success: boolean }> =>
+    api.post(`/meetings/${code}/typing`, data).then(r => r.data),
+  getParticipants: (code: string): Promise<{ participants: Array<{ id: string; name: string; role: string; isTyping?: boolean }> }> =>
+    api.get(`/meetings/${code}/participants`).then(r => r.data),
 };
 
 export const roomsApi = {

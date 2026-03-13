@@ -293,21 +293,21 @@ export default function Dashboard() {
               CodePair Session
             </button>
             <button
-              onClick={handleCreateMeeting}
+              onClick={() => navigate("/create-session")}
               disabled={isCreating}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white text-black rounded-lg font-semibold text-sm hover:bg-neutral-200 transition-colors w-full sm:w-auto"
-              title="Start a new interview meeting"
+              title="Start a collaborative coding interview with real-time code editing and AI analysis"
             >
               {isCreating ? <Loader2 size={16} className="animate-spin" /> : <Video size={16} />}
-              New Interview(including code editor)
+              New Coding Meeting
             </button>
             <button
               onClick={() => navigate("/virtual-meet")}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-accent text-white rounded-lg font-semibold text-sm hover:bg-accent-secondary transition-colors w-full sm:w-auto"
-              title="Start a new 3D virtual interview meeting"
+              title="Start a video interview meeting without code collaboration"
             >
               <Monitor size={16} />
-              New Interview(excluding code editor)
+              New Video Meeting
             </button>
           </div>
         </div>
@@ -660,7 +660,7 @@ export default function Dashboard() {
       {/* Create Session Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md">
-          <div className="glass-panel border-white/[0.1] rounded-2xl p-6 sm:p-8 max-w-md w-full mx-4 shadow-2xl relative shadow-[0_0_80px_rgba(0,0,0,0.8)]">
+          <div className="glass-panel border-white/[0.1] rounded-2xl p-6 sm:p-8 max-w-md w-full mx-4 shadow-[0_0_80px_rgba(0,0,0,0.8)] relative">
             <button
               onClick={() => setShowCreateModal(false)}
               className="absolute top-4 right-4 text-neutral-500 hover:text-white transition-colors"
