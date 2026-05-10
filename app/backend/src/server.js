@@ -20,16 +20,49 @@ const httpServer = createServer(app);
 
 const __dirname = path.resolve();
 
+function normalizeOrigin(value) {
+  return typeof value === "string" ? value.trim().replace(/\/$/, "") : "";
+}
+
+function parseAllowedOrigins() {
+  const configured = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  if (configured.length > 0) {
+    return configured.map(normalizeOrigin);
+  }
+
+  return ENV.CLIENT_URL ? [normalizeOrigin(ENV.CLIENT_URL)] : [];
+}
+
+function isOriginAllowed(origin, rules) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (!normalizedOrigin) return true;
+  if (rules.length === 0) return true;
+
+  return rules.some((rule) => {
+    if (!rule) return false;
+    if (rule === normalizedOrigin) return true;
+
+    if (rule.includes("*")) {
+      const escaped = rule.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      return new RegExp(`^${escaped}$`).test(normalizedOrigin);
+    }
+
+    return false;
+  });
+}
+
 // middleware
 app.use(express.json());
 // Allow multiple origins via ALLOWED_ORIGINS (comma-separated) or fallback to ENV.CLIENT_URL
-const allowedOrigins = (process.env.ALLOWED_ORIGINS && process.env.ALLOWED_ORIGINS.split(",").map(s => s.trim()).filter(Boolean)) || (ENV.CLIENT_URL ? [ENV.CLIENT_URL] : []);
+const allowedOrigins = parseAllowedOrigins();
 app.use(cors({
   origin: (origin, callback) => {
     // allow requests with no origin (mobile apps, curl, same-origin)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.length === 0) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (isOriginAllowed(origin, allowedOrigins)) return callback(null, true);
     return callback(new Error('CORS policy: origin not allowed'));
   },
   credentials: true,

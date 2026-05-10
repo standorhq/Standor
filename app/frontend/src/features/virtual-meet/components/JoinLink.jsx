@@ -21,7 +21,7 @@ const JoinLink = () => {
       navigate(`/virtual-meet/${meetingId}/meeting`);
     } catch (err) {
       console.error("Failed to connect:", err);
-      alert("Could not connect to server. Please try again.");
+      alert(`Could not connect to server. ${err?.message || "Please try again."}`);
     }
   };
 

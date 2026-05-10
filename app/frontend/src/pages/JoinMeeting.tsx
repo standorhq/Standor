@@ -27,8 +27,6 @@ export default function JoinMeeting() {
 
     const [code, setCode] = useState(urlCode || '');
     const [joinName, setJoinName] = useState(user?.name || '');
-    const [hostEmail, setHostEmail] = useState(user?.email || '');
-    const [candidateEmail, setCandidateEmail] = useState('');
     const [isJoining, setIsJoining] = useState(false);
     const [step, setStep] = useState<'CODE' | 'PREVIEW' | 'WAITING'>(urlCode ? 'PREVIEW' : 'CODE');
 
@@ -70,10 +68,7 @@ export default function JoinMeeting() {
         if (user?.name && !joinName) {
             setJoinName(user.name);
         }
-        if (user?.email && !hostEmail) {
-            setHostEmail(user.email);
-        }
-    }, [user, joinName, hostEmail]);
+    }, [user, joinName]);
 
     useEffect(() => {
         if (step === 'WAITING' && code) {
@@ -135,8 +130,6 @@ export default function JoinMeeting() {
         try {
             const meetingCode = code.trim();
             const resolvedName = joinName.trim();
-            const resolvedHostEmail = hostEmail.trim();
-            const resolvedCandidateEmail = candidateEmail.trim();
 
             if (!user) {
                 // Guest Join
@@ -145,20 +138,8 @@ export default function JoinMeeting() {
                     setIsJoining(false);
                     return;
                 }
-                if (!resolvedHostEmail) {
-                    toast.error('Please enter the host email');
-                    setIsJoining(false);
-                    return;
-                }
-                if (!resolvedCandidateEmail) {
-                    toast.error('Please enter the candidate email');
-                    setIsJoining(false);
-                    return;
-                }
                 const { data } = await axios.post(`${API_BASE}/api/meetings/${meetingCode}/guest-join`, {
                     name: resolvedName,
-                    hostEmail: resolvedHostEmail,
-                    candidateEmail: resolvedCandidateEmail,
                 });
                 setAuth(data.user, data.token);
                 localStorage.setItem('standor_token', data.token);
@@ -169,10 +150,7 @@ export default function JoinMeeting() {
                 }
             } else {
                 // Authenticated Join
-                const { data } = await axios.post(`${API_BASE}/api/meetings/${meetingCode}/join`, {
-                    hostEmail: resolvedHostEmail,
-                    candidateEmail: resolvedCandidateEmail,
-                }, {
+                const { data } = await axios.post(`${API_BASE}/api/meetings/${meetingCode}/join`, {}, {
                     headers: { Authorization: `Bearer ${localStorage.getItem('standor_token')}` }
                 });
 
@@ -187,8 +165,6 @@ export default function JoinMeeting() {
                 micOn,
                 camOn,
                 joinName: resolvedName,
-                hostEmail: resolvedHostEmail,
-                candidateEmail: resolvedCandidateEmail,
             }));
 
             navigate(`/meeting/${meetingCode}`);
@@ -339,20 +315,6 @@ export default function JoinMeeting() {
                                                         className="w-full bg-black/40 border border-white/[0.1] rounded-2xl py-4 pl-12 pr-4 focus:outline-none focus:border-white/30 transition-all"
                                                     />
                                                 </div>
-                                                <input
-                                                    type="email"
-                                                    placeholder="Host Email"
-                                                    value={hostEmail}
-                                                    onChange={(e) => setHostEmail(e.target.value)}
-                                                    className="w-full bg-black/40 border border-white/[0.1] rounded-2xl py-4 px-4 focus:outline-none focus:border-white/30 transition-all"
-                                                />
-                                                <input
-                                                    type="email"
-                                                    placeholder="Candidate Email"
-                                                    value={candidateEmail}
-                                                    onChange={(e) => setCandidateEmail(e.target.value)}
-                                                    className="w-full bg-black/40 border border-white/[0.1] rounded-2xl py-4 px-4 focus:outline-none focus:border-white/30 transition-all"
-                                                />
                                                 {user ? (
                                                     <p className="text-xs text-white/30">
                                                         Signed in as {(user as any).name} ({user.email})

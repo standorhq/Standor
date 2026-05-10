@@ -20,7 +20,7 @@ let _promise: Promise<FlagEntry[]> | null = null;
 async function fetchFlags(): Promise<FlagEntry[]> {
   if (_cache) return _cache;
   if (!_promise) {
-    const API = (import.meta.env.VITE_BACKEND_URL as string) || '';
+    const API = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:4000';
     _promise = fetch(`${API}/api/flags/active`)
       .then(r => r.ok ? r.json() : [])
       .catch(() => [])

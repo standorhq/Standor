@@ -47,8 +47,13 @@ export async function createMeeting(req, res) {
 export async function getMeeting(req, res) {
   try {
     const { code } = req.params;
+    const normalizedCode = code ? code.trim().toLowerCase() : "";
+    
     const session = await Session.findOne({
-      $or: [{ callId: code }, { roomId: code }],
+      $or: [
+        { callId: { $regex: `^${normalizedCode}$`, $options: "i" } },
+        { roomId: { $regex: `^${normalizedCode}$`, $options: "i" } }
+      ],
       status: "ACTIVE",
     });
 
@@ -77,10 +82,13 @@ export async function joinMeeting(req, res) {
   try {
     const { code } = req.params;
     const userId = req.user._id;
-    const { hostEmail, candidateEmail } = req.body;
+    const normalizedCode = code ? code.trim().toLowerCase() : "";
 
     const session = await Session.findOne({
-      $or: [{ callId: code }, { roomId: code }],
+      $or: [
+        { callId: { $regex: `^${normalizedCode}$`, $options: "i" } },
+        { roomId: { $regex: `^${normalizedCode}$`, $options: "i" } }
+      ],
       status: "ACTIVE",
     });
 
@@ -99,18 +107,7 @@ export async function joinMeeting(req, res) {
       session.lastActivityAt = new Date();
     }
 
-    if (typeof hostEmail === "string" && hostEmail.trim()) {
-      session.hostEmail = hostEmail.trim();
-    }
-
-    if (typeof candidateEmail === "string" && candidateEmail.trim()) {
-      session.candidateEmail = candidateEmail.trim();
-    }
-
-    if ((typeof hostEmail === "string" && hostEmail.trim()) || (typeof candidateEmail === "string" && candidateEmail.trim())) {
-      session.lastActivityAt = new Date();
-    }
-
+    session.lastActivityAt = new Date();
     await session.save();
 
     // Non-host goes to waiting room
@@ -125,14 +122,18 @@ export async function joinMeeting(req, res) {
 export async function guestJoinMeeting(req, res) {
   try {
     const { code } = req.params;
-    const { name, hostEmail, candidateEmail } = req.body;
+    const { name } = req.body;
+    const normalizedCode = code ? code.trim().toLowerCase() : "";
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: "Name is required" });
     }
 
     const session = await Session.findOne({
-      $or: [{ callId: code }, { roomId: code }],
+      $or: [
+        { callId: { $regex: `^${normalizedCode}$`, $options: "i" } },
+        { roomId: { $regex: `^${normalizedCode}$`, $options: "i" } }
+      ],
       status: "ACTIVE",
     });
 
@@ -152,14 +153,6 @@ export async function guestJoinMeeting(req, res) {
     // Persist guest candidate for post-meeting generic email
     if (!session.participantId) {
       session.participantId = guestUser._id;
-    }
-
-    if (typeof hostEmail === "string" && hostEmail.trim()) {
-      session.hostEmail = hostEmail.trim();
-    }
-
-    if (typeof candidateEmail === "string" && candidateEmail.trim()) {
-      session.candidateEmail = candidateEmail.trim();
     }
 
     session.lastActivityAt = new Date();

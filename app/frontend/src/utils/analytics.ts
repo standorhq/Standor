@@ -28,7 +28,7 @@ function hasConsent(): boolean {
 
 /** Internal dispatcher — replace body to integrate a real analytics provider. */
 function _dispatch(eventName: string, props: Record<string, unknown>) {
-  const API = (import.meta.env.VITE_BACKEND_URL as string) || '';
+  const API = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:4000';
   // Fire-and-forget; never throws to avoid breaking the app
   fetch(`${API}/api/analytics/event`, {
     method: 'POST',
