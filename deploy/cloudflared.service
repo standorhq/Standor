@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflared tunnel service for Standor backend
+After=network.target
+
+[Service]
+Type=simple
+User=cloudflared
+ExecStart=/usr/local/bin/cloudflared tunnel --config /etc/cloudflared/ingress.yml run standor-backend
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

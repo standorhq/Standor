@@ -1,0 +1,15 @@
+# Example cloudflared config for a named tunnel
+# Copy this to ~/.cloudflared/config.yml or to app/backend/.cloudflared/config.yml
+# and replace placeholders with your tunnel ID and credentials path.
+
+tunnel: <TUNNEL-UUID-HERE>
+credentials-file: C:\\Users\\<you>\\.cloudflared\\<TUNNEL-UUID-HERE>.json
+
+ingress:
+  - hostname: <optional-host.example.com> # only when you have a domain configured in Cloudflare
+    service: http://localhost:4000
+  - service: http_status:404
+
+# For quick ephemeral tunnels you can run:
+#   cloudflared tunnel --url http://localhost:4000
+# which does not require this config file and returns a temporary public URL.
