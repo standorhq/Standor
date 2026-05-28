@@ -14,6 +14,7 @@ dist
 app/frontend/build/
 app/frontend/test-results/
 app/frontend/playwright-report/
+!app/backend/package-lock.json
 
 # Docs — local only
 DEPLOYMENT.md
