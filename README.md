@@ -29,17 +29,17 @@ Quick start (non-technical)
 1. Prepare the machine that will run the server (Windows or Linux). Install Node.js and `cloudflared`.
 2. Copy the example environment file and fill secrets locally (do NOT commit these):
 	- Copy `app/backend/.env.production.example` → `app/backend/.env` and edit values (database, Google keys, JWT secret).
-3. From the server folder start the backend:
-	- Open a terminal, go to `app/backend`, run:
+3. From Windows, start the backend and tunnel together with the helper script:
+	- Open PowerShell, go to the scripts folder, and run:
 
 ```powershell
-npm ci
-npm start
+cd app/scripts
+.\start-backend-and-tunnel.ps1
 ```
 
-4. Start Cloudflare Tunnel to expose your backend (the project includes example configs):
-	- Put your tunnel credentials in `C:\Users\<you>\\.cloudflared` (Windows) or `~/.cloudflared` (Linux).
-	- Run:
+4. Before that script works, make sure your Cloudflare Tunnel config exists at `C:\Users\<you>\\.cloudflared\config.yml` and points at `http://localhost:4000`.
+	- Use `app/deploy/ingress.yml` as the template and replace the tunnel UUID and credentials file path.
+	- If you want to test just the tunnel by itself, run:
 
 ```powershell
 cloudflared tunnel --config "~/.cloudflared/config.yml" run <your-tunnel-name>
