@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: standor-backend
+    env: docker
+    dockerfilePath: app/backend/Dockerfile
+    region: oregon
+    autoDeploy: true
+    healthCheckPath: /health
+    plan: free
+    # Do NOT store secrets here. Configure env vars in Render dashboard after creation.

@@ -1,0 +1,30 @@
+name: Keep Render Service Awake
+
+# This workflow pings the backend health endpoint on a schedule to reduce chance of the service sleeping.
+# Note: the only reliable way to prevent sleep is to use Render's paid "always-on" plan. This is a workaround.
+
+on:
+  schedule:
+    # every 10 minutes
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Curl backend health
+        run: |
+          set -e
+          echo "Pinging https://api.standor.in/health to keep service warm"
+          for i in 1 2 3; do
+            if curl -fsS --max-time 10 https://api.standor.in/health -o /dev/null; then
+              echo "Health ping successful (attempt $i)"
+              exit 0
+            else
+              echo "Health ping failed (attempt $i), retrying..."
+              sleep 5
+            fi
+          done
+          echo "All attempts failed, but workflow will complete (no failure recorded)."
+          exit 0
