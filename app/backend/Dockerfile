@@ -1,10 +1,10 @@
-FROM node:20-alpine
+FROM node:20-bookworm-slim
 WORKDIR /app
 
 # Install production dependencies
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci --production --silent --prefer-offline
+RUN npm ci --omit=dev --no-audit --no-fund
 
 # Copy source
 COPY . .
