@@ -1,0 +1,7 @@
+tunnel: d2d6c145-a974-4698-acb1-114e9ef462d6
+credentials-file: C:\Users\DELL\.cloudflared\d2d6c145-a974-4698-acb1-114e9ef462d6.json
+
+ingress:
+  - hostname: api.standor.in
+    service: http://127.0.0.1:4000
+  - service: http_status:404
